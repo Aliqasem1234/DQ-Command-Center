@@ -9,6 +9,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy import select, func, desc, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.data_hierarchy import (
     DataDomain, Dataset, DataElement, DataElementMetadata, DataLineage,
@@ -539,9 +540,12 @@ class DataHierarchyService:
         db: AsyncSession,
         dataset_id: UUID = None,
         severity: IssueSeverity = None,
+        limit: int = None,
     ) -> list[QualityIssue]:
         """Get open quality issues"""
-        query = select(QualityIssue).where(QualityIssue.status == IssueStatus.OPEN)
+        query = select(QualityIssue).options(selectinload(QualityIssue.dataset)).where(
+            QualityIssue.status == IssueStatus.OPEN
+        )
 
         if dataset_id:
             query = query.where(QualityIssue.dataset_id == dataset_id)
@@ -550,6 +554,8 @@ class DataHierarchyService:
             query = query.where(QualityIssue.severity == severity)
 
         query = query.order_by(desc(QualityIssue.detected_at))
+        if limit:
+            query = query.limit(limit)
         result = await db.execute(query)
         return result.scalars().all()
 

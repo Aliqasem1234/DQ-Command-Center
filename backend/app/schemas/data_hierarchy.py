@@ -237,6 +237,18 @@ class QualityIssueUpdate(BaseModel):
     resolution_notes: Optional[str] = None
 
 
+class QualityIssueSummaryResponse(BaseModel):
+    id: UUID
+    description: Optional[str] = None
+    severity: str
+    status: str
+    dataset_name: Optional[str] = None
+    detected_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class QualityIssueResponse(QualityIssueBase):
     id: UUID
     rule_id: UUID
@@ -358,6 +370,9 @@ class DashboardHealthResponse(BaseModel):
     open_issues: int
     critical_issues: int
     recent_trend: str
+    total_datasets: int = 0
+    total_quality_rules: int = 0
+    daily_trend: List[QualityTrendResponse] = []
 
 
 # ===== SEARCH SCHEMAS =====

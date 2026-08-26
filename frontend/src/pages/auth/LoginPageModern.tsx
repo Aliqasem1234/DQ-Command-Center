@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff, Loader } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 
 interface LoginError {
   field?: string;
@@ -8,7 +8,7 @@ interface LoginError {
 }
 
 export function LoginPageModern() {
-  const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -20,29 +20,11 @@ export function LoginPageModern() {
     setError(null);
     setLoading(true);
 
-    try {
-      const response = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Login failed');
-      }
-
-      const data = await response.json();
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError({
-        message: err instanceof Error ? err.message : 'An error occurred',
-      });
-    } finally {
-      setLoading(false);
+    const result = await login({ email, password });
+    if (!result.success) {
+      setError({ message: result.error || 'Login failed' });
     }
+    setLoading(false);
   };
 
   return (
@@ -138,15 +120,6 @@ export function LoginPageModern() {
                 'Sign In'
               )}
             </button>
-
-            {/* Demo Credentials (dev only) */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-                <p className="font-medium mb-1">Demo Credentials:</p>
-                <p>Email: admin@dqcenter.local</p>
-                <p>Password: (check environment setup)</p>
-              </div>
-            )}
           </form>
 
           {/* Register Link */}

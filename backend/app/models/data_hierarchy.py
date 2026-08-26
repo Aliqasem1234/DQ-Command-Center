@@ -124,13 +124,13 @@ class Dataset(Base):
     domain_id = Column(UUID(as_uuid=True), ForeignKey("data_domains.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Type and location
-    dataset_type = Column(Enum(DatasetType), nullable=False, index=True)
+    dataset_type = Column(Enum(DatasetType, native_enum=False), nullable=False, index=True)
     data_source_system = Column(String(255), nullable=True)  # e.g., "PostgreSQL", "S3", "Salesforce"
     database_name = Column(String(255), nullable=True)
     table_name = Column(String(255), nullable=True)
     
     # Classification
-    classification = Column(Enum(ClassificationLevel), default=ClassificationLevel.INTERNAL)
+    classification = Column(Enum(ClassificationLevel, native_enum=False), default=ClassificationLevel.INTERNAL)
     
     # Ownership
     data_owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -190,7 +190,7 @@ class DataElement(Base):
     nullable = Column(Boolean, default=True, nullable=False)
     
     # Classification
-    classification = Column(Enum(ClassificationLevel), default=ClassificationLevel.INTERNAL)
+    classification = Column(Enum(ClassificationLevel, native_enum=False), default=ClassificationLevel.INTERNAL)
     
     # Ownership
     data_owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -288,7 +288,7 @@ class DataGovernance(Base):
     element_id = Column(UUID(as_uuid=True), ForeignKey("data_elements.id", ondelete="CASCADE"), nullable=True)
     
     # Role and assignment
-    role = Column(Enum(GovernanceRole), nullable=False)
+    role = Column(Enum(GovernanceRole, native_enum=False), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     
@@ -333,7 +333,7 @@ class GovernancePolicy(Base):
     policy_definition = Column(JSON, nullable=True)
 
     # Status and dates
-    status = Column(Enum(GovernancePolicyStatus), default=GovernancePolicyStatus.DRAFT, nullable=False, index=True)
+    status = Column(Enum(GovernancePolicyStatus, native_enum=False), default=GovernancePolicyStatus.DRAFT, nullable=False, index=True)
     effective_date = Column(DateTime(timezone=True), nullable=True)
     expiration_date = Column(DateTime(timezone=True), nullable=True)
 
@@ -368,7 +368,7 @@ class QualityTarget(Base):
     sla_hours = Column(Integer, nullable=True)  # Response time SLA
     
     # Status
-    status = Column(Enum(TargetStatus), default=TargetStatus.ACTIVE)
+    status = Column(Enum(TargetStatus, native_enum=False), default=TargetStatus.ACTIVE)
     
     # Audit
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(datetime.now().astimezone().tzinfo))
@@ -391,7 +391,7 @@ class RuleEffectiveness(Base):
     # Metrics
     last_30_days_pass_rate = Column(Float, nullable=True)
     last_30_days_fail_rate = Column(Float, nullable=True)
-    trend = Column(Enum(TrendDirection), nullable=True)
+    trend = Column(Enum(TrendDirection, native_enum=False), nullable=True)
     
     # Audit
     last_calculated = Column(DateTime(timezone=True), nullable=True)
@@ -442,8 +442,8 @@ class QualityIssue(Base):
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
     
     # Issue details
-    severity = Column(Enum(IssueSeverity), nullable=False, index=True)
-    status = Column(Enum(IssueStatus), default=IssueStatus.OPEN, index=True)
+    severity = Column(Enum(IssueSeverity, native_enum=False), nullable=False, index=True)
+    status = Column(Enum(IssueStatus, native_enum=False), default=IssueStatus.OPEN, index=True)
     description = Column(Text, nullable=True)
     
     # Tracking

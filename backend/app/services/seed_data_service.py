@@ -17,6 +17,7 @@ All marked as DEMO DATA
 import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User

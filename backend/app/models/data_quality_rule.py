@@ -49,13 +49,13 @@ class DataQualityRule(Base):
     # Hierarchy - rules target dataset or element
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=True)
     element_id = Column(UUID(as_uuid=True), ForeignKey("data_elements.id", ondelete="CASCADE"), nullable=True)
-    target_level = Column(Enum(RuleTargetLevel), nullable=True)  # dataset or element
+    target_level = Column(Enum(RuleTargetLevel, native_enum=False), nullable=True)  # dataset or element
     
     # Rule definition
-    dimension = Column(Enum(DataQualityDimension), nullable=False, index=True)
+    dimension = Column(Enum(DataQualityDimension, native_enum=False), nullable=False, index=True)
     rule_type = Column(String(100), nullable=False)  # e.g., "required_field", "duplicate_check", "format_validation"
-    severity = Column(Enum(RuleSeverity), default=RuleSeverity.MEDIUM, nullable=False)
-    status = Column(Enum(RuleStatus), default=RuleStatus.DRAFT, nullable=False, index=True)
+    severity = Column(Enum(RuleSeverity, native_enum=False), default=RuleSeverity.MEDIUM, nullable=False)
+    status = Column(Enum(RuleStatus, native_enum=False), default=RuleStatus.DRAFT, nullable=False, index=True)
     
     # Rule configuration
     rule_definition = Column(JSON, nullable=True)  # Store rule parameters as JSON

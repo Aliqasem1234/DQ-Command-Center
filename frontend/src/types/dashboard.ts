@@ -25,3 +25,37 @@ export interface DashboardResponse {
   login_chart: ChartDataPoint[];
   recent_activity: RecentActivityItem[];
 }
+
+export interface DimensionScore {
+  dimension: string;
+  score: number | null;
+  status: string;
+  rule_count: number;
+}
+
+export interface QualityTrendPoint {
+  date: string;
+  pass_rate: number;
+  total_runs: number;
+}
+
+export interface DashboardHealthSummary {
+  health_score: number;
+  status: string;
+  dimensions: Record<string, DimensionScore>;
+  open_issues: number;
+  critical_issues: number;
+  recent_trend: string;
+  total_datasets: number;
+  total_quality_rules: number;
+  daily_trend: QualityTrendPoint[];
+}
+
+export interface QualityIssueSummary {
+  id: string;
+  description: string | null;
+  severity: string;
+  status: string;
+  dataset_name: string | null;
+  detected_at: string;
+}

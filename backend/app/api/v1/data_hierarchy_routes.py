@@ -49,7 +49,7 @@ from app.schemas.data_hierarchy import (
     DatasetResponse, DatasetCreate,
     DataElementResponse, DataElementCreate,
     HealthScoreResponse, DashboardHealthResponse,
-    SearchResultsResponse,
+    SearchResultsResponse, QualityIssueSummaryResponse,
 )
 from app.services.data_hierarchy_service import DataHierarchyService
 from app.services.quality_analytics_service import QualityAnalyticsService
@@ -310,7 +310,16 @@ async def get_dashboard_summary(
     trends = await QualityAnalyticsService.quality_trends(
         db, dataset_id=dataset_id, days=days
     )
-    
+
+    from sqlalchemy import select, func
+    from app.models.data_hierarchy import Dataset
+    from app.models.data_quality_rule import DataQualityRule, RuleStatus
+
+    total_datasets = (await db.execute(select(func.count(Dataset.id)))).scalar() or 0
+    total_quality_rules = (
+        await db.execute(select(func.count(DataQualityRule.id)).where(DataQualityRule.status == RuleStatus.ACTIVE))
+    ).scalar() or 0
+
     return DashboardHealthResponse(
         health_score=health.get("health_score", 0),
         status=health.get("status", "unknown"),
@@ -318,7 +327,33 @@ async def get_dashboard_summary(
         open_issues=issues.get("open_issues", 0),
         critical_issues=issues.get("critical_count", 0),
         recent_trend=trends.get("trend", "unknown"),
+        total_datasets=total_datasets,
+        total_quality_rules=total_quality_rules,
+        daily_trend=trends.get("daily_data", []),
     )
+
+
+@router.get("/quality-issues/open", response_model=list[QualityIssueSummaryResponse])
+async def list_open_issues(
+    limit: int = Query(10, ge=1, le=50),
+    dataset_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("data_quality:view")),
+) -> list:
+    """List the most recent open quality issues, for dashboard display"""
+    issues = await DataHierarchyService.get_open_issues(db, dataset_id=dataset_id, limit=limit)
+    return [
+        {
+            "id": issue.id,
+            "description": issue.description,
+            "severity": issue.severity.value,
+            "status": issue.status.value,
+            "dataset_name": issue.dataset.name if issue.dataset else None,
+            "detected_at": issue.detected_at,
+        }
+        for issue in issues
+    ]
 
 
 # Governance role assignments (create/list/update/revoke) live under
