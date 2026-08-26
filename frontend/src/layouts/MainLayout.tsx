@@ -85,9 +85,9 @@ export function MainLayout() {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden">
       {/* Header */}
-      <header className="fixed top-0 right-0 left-0 md:left-64 h-16 bg-white border-b border-slate-200 shadow-sm z-40">
+      <header className="fixed top-0 right-0 left-0 md:left-64 h-16 surface border-b shadow-sm z-40">
         <div className="h-full px-4 flex items-center justify-between">
           <button
             onClick={handleDrawerToggle}
@@ -145,7 +145,7 @@ export function MainLayout() {
 
               {/* User Dropdown Menu */}
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-lg">
+                <div className="absolute right-0 mt-2 w-48 surface border rounded-lg shadow-lg">
                   <div className="px-4 py-2 border-b border-slate-200 text-sm text-slate-600">
                     {user?.email}
                   </div>
@@ -177,14 +177,14 @@ export function MainLayout() {
       </header>
 
       {/* Sidebar */}
-      <aside className="hidden md:flex md:fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-slate-200 flex-col z-50 pt-16">
+      <aside className="hidden md:flex md:fixed left-0 top-0 bottom-0 w-64 surface border-r flex-col z-50 pt-16">
         {drawerContent}
       </aside>
 
       {/* Mobile Drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden" onClick={handleDrawerToggle}>
-          <aside className="w-64 h-full bg-white flex flex-col pt-16" onClick={(e) => e.stopPropagation()}>
+          <aside className="w-64 h-full surface flex flex-col pt-16" onClick={(e) => e.stopPropagation()}>
             {drawerContent}
           </aside>
         </div>

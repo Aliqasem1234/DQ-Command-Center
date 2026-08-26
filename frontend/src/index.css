@@ -196,6 +196,23 @@ body {
     @apply text-slate-300;
   }
 
+  /* App shell surfaces (header, sidebar, dropdowns) */
+  .surface {
+    @apply bg-white border-slate-200;
+  }
+
+  .dark .surface {
+    @apply bg-slate-900 border-slate-700;
+  }
+
+  .surface-hover:hover {
+    @apply bg-slate-100;
+  }
+
+  .dark .surface-hover:hover {
+    @apply bg-slate-800;
+  }
+
   /* Divider */
   .divider {
     @apply border-t border-slate-200;
@@ -258,4 +275,19 @@ body {
   .no-print {
     display: none;
   }
+}
+
+/* Dark-mode text color remap.
+ * Most pages hardcode Tailwind's text-slate-* utilities directly rather
+ * than going through a shared component class, so .dark overrides for
+ * them have to live in the utilities layer (or unlayered) - a rule in
+ * @layer components always loses to a utilities-layer rule in Tailwind's
+ * cascade regardless of selector specificity, so putting this block above
+ * with the rest of the .dark rules would have no effect. */
+@layer utilities {
+  .dark .text-slate-900 { @apply text-slate-50; }
+  .dark .text-slate-800 { @apply text-slate-100; }
+  .dark .text-slate-700 { @apply text-slate-200; }
+  .dark .text-slate-600 { @apply text-slate-300; }
+  .dark .text-slate-500 { @apply text-slate-400; }
 }
