@@ -1,0 +1,119 @@
+# Architecture
+
+## Data hierarchy
+
+Real foreign-key relationships (`app/models/data_hierarchy.py`,
+`app/models/data_quality_rule.py`), not string-based references:
+
+```
+DataDomain (data_domains)
+  └── Dataset (datasets)                     FK: domain_id
+        ├── DataElement (data_elements)      FK: dataset_id
+        │     └── DataElementMetadata        FK: element_id (profiling stats)
+        ├── DataQualityRule (data_quality_rules)   FK: dataset_id / element_id
+        │     ├── DataQualityResult          FK: rule_id
+        │     └── RuleEffectiveness          FK: rule_id
+        ├── QualityCheckRun                  FK: dataset_id
+        ├── QualityIssue                     FK: rule_id, dataset_id
+        └── DataLineage                      FK: source_dataset_id, target_dataset_id
+
+DataGovernance   - role assignment (owner/steward/curator/analyst) scoped to
+                   a domain, dataset, or element (exactly one FK set)
+GovernancePolicy - policy (retention/access/quality/privacy) scoped to a
+                   domain or dataset
+```
+
+RBAC is separate from the data hierarchy: `User` → `UserRole` → `Role` →
+`RolePermission` → `Permission`, with a `is_super_admin` flag that
+unconditionally bypasses permission checks.
+
+## Backend layout
+
+```
+backend/app/
+  api/v1/          route handlers (thin - validate input, call a service, shape the response)
+  services/        business logic, one module per domain concept
+  models/          SQLAlchemy ORM models
+  schemas/         Pydantic request/response models
+  core/            security.py (JWT/password hashing), rbac.py (permission
+                   checks), limiter.py (shared rate limiter), seed_secure.py
+                   (startup init)
+  middleware/      security headers
+alembic/versions/  migrations, applied in order at container startup
+```
+
+The frontend mirrors this: `src/services/*.ts` (one per backend domain,
+all routed through the single authenticated axios client in `services/api.ts`),
+`src/store/` (Zustand: auth, theme, UI state), `src/pages/`, `src/hooks/useAuth.ts`.
+
+## Known architectural debt
+
+Be aware of these before extending the code - they were identified and, where
+noted, partially reconciled during the audit that produced this document, but
+a full consolidation was out of scope.
+
+**Two independent "create quality rule" paths.** `app/services/data_quality_service.py`
+(behind `/api/v1/data-quality/rules`) creates rules with free-text
+`data_source`/`target_field` string fields. `app/services/data_hierarchy_service.py`
+(behind the hierarchy routes) creates rules with real `dataset_id`/`element_id`
+foreign keys. Both write to the same `data_quality_rules` table and the same
+ORM model, so data from either path is visible through either read path, but
+a rule created via one API won't have the fields the other API expects
+populated. The frontend's Data Quality Rules page currently uses the
+free-text path. Before building more on top of this, pick one targeting
+model and migrate the other call sites onto it.
+
+**Two dashboard summary endpoints with overlapping but not identical data.**
+`/api/v1/dashboard/*` (`app/api/v1/dashboard.py`) serves admin-facing stats
+(user counts, audit activity) plus a DQ/governance rollup via
+`enhanced_dashboard_service.py`. `/api/v1/dashboard/health` and
+`/api/v1/dashboard/summary` (in `data_hierarchy_routes.py`, via
+`quality_analytics_service.py`) serve a health-score-focused view with real
+trend data. The frontend dashboard currently calls the second one. Worth
+consolidating into one dashboard service if you're adding more widgets.
+
+**The frontend's production Docker stage was never wired up.**
+`frontend/Dockerfile`'s `production` stage (`vite build` + serve via its
+own nginx) referenced a `frontend/nginx.conf` that didn't exist -
+`docker build --target production` failed outright. Fixed in this pass
+(added the missing config), but the top-level `nginx` service still always
+proxies to the Vite dev server (`frontend:5173`), never to this stage - see
+PRODUCTION_DEPLOYMENT.md for what's still needed to actually route to it.
+
+**In-memory rate limiting.** `slowapi`'s default backend keeps counters in
+process memory - they reset on every container restart/redeploy and aren't
+shared across replicas. Fine for a single-instance deployment; move to a
+Redis-backed limiter before scaling horizontally.
+
+## What was actually broken when this audit started
+
+Worth recording once, here, rather than re-discovering it: prior AI-authored
+completion reports in this repository (since removed) claimed
+"production-ready" and "100% complete." None of the following was true when
+this pass began, and all of it was found by actually running the app, not by
+reading the code:
+
+- The backend could not start at all (a SQLAlchemy reserved-attribute
+  collision, plus ~10 wrong imports across route/service files).
+- Every non-super-admin request to a permission-gated endpoint crashed with
+  a 500 (lazy-loading a relationship on an async session with no eager-load
+  configured - masked because super-admin short-circuits past the check).
+- The governance module queried tables an earlier migration had already
+  dropped.
+- `alembic.ini` had a hardcoded dev database password, silently ignored
+  by `.env` - migrations broke the moment a real password was set.
+- The default `docker compose up` path seeded a super-admin account with a
+  hardcoded, publicly-visible password and echoed it to container logs.
+- The frontend login page never called the app's auth store, so every
+  successful login bounced back to the login screen.
+- `UserListPage`, `RoleListPage`, `DepartmentListPage`, `AuditLogPage`,
+  `DataQualityRulesPage`, and `DataQualityMonitoringPage` were hardcoded
+  fake data with dead Add/Edit/Delete buttons.
+- `POST` and `GET /api/v1/data-quality/rules` both crashed on every call
+  (a dropped-then-still-referenced column, and a SQLAlchemy 1.x API call
+  that doesn't exist in 2.0).
+- 27-32 translation keys used in the UI didn't exist in one or both locale
+  files, so raw keys like `common.add` rendered literally.
+
+All of the above is fixed and verified live as of this document. See git log
+for the individual commits and their verification notes.
