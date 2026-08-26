@@ -42,16 +42,16 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 card">
-      <h2 className="text-2xl font-bold text-slate-900 mb-6">{t('auth.resetPassword')}</h2>
+    <form onSubmit={handleSubmit} className="space-y-5 card-lg">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">{t('auth.resetPassword')}</h2>
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div className="alert alert-error text-sm">
           {error}
         </div>
       )}
       {message && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+        <div className="alert alert-success text-sm">
           {message}
         </div>
       )}

@@ -118,7 +118,7 @@ export function DatasetDetailPage() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{dataset.name}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{dataset.name}</h1>
           <p className="text-slate-600 text-sm mt-1">{dataset.description || t('datasets.noDescription')}</p>
         </div>
         <div className="flex items-center gap-3">

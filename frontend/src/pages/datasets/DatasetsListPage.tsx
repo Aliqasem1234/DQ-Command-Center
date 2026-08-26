@@ -52,7 +52,7 @@ export function DatasetsListPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{t('datasets.title')}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('datasets.title')}</h1>
           <p className="text-slate-600 text-sm mt-1">{t('datasets.subtitle')}</p>
         </div>
         <button className="flex items-center gap-2 btn-primary" onClick={() => setIsUploading(true)}>
@@ -78,21 +78,29 @@ export function DatasetsListPage() {
             }
           />
         ) : (
-          <div className="divide-y divide-slate-200">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {datasets.map((ds) => (
               <button
                 key={ds.id}
                 onClick={() => navigate(`/datasets/${ds.id}`)}
-                className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-6 py-4 hover:bg-slate-50 text-left transition-colors"
+                className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-left transition-colors"
               >
-                <div className="min-w-0">
-                  <p className="font-medium text-slate-900 truncate">{ds.name}</p>
-                  <p className="text-sm text-slate-600 truncate">{ds.description || t('datasets.noDescription')}</p>
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="icon-badge icon-badge-blue">
+                    <Database className="w-[18px] h-[18px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900 truncate">{ds.name}</p>
+                    <p className="text-sm text-slate-500 truncate">{ds.description || t('datasets.noDescription')}</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 sm:gap-6 text-sm text-slate-500 flex-shrink-0">
+                <div className="flex items-center gap-4 sm:gap-6 text-sm text-slate-500 flex-shrink-0 pl-[52px] sm:pl-0">
                   <span className="whitespace-nowrap">{ds.row_count ?? '—'} {t('datasets.rows')}</span>
-                  <span className="capitalize whitespace-nowrap">{ds.status === 'active' ? t('common.active') : ds.status === 'inactive' ? t('common.inactive') : ds.status}</span>
-                  <ChevronRight size={18} className="hidden sm:block" />
+                  <span className={`badge whitespace-nowrap ${ds.status === 'active' ? 'badge-success' : 'badge-info'}`}>
+                    <span className="badge-dot" />
+                    {ds.status === 'active' ? t('common.active') : ds.status === 'inactive' ? t('common.inactive') : ds.status}
+                  </span>
+                  <ChevronRight size={18} className="hidden sm:block text-slate-300 dark:text-slate-600" />
                 </div>
               </button>
             ))}
@@ -136,8 +144,8 @@ function UploadModal({
   const [file, setFile] = useState<File | null>(null);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full mx-4">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">{t('datasets.uploadDataset')}</h2>
           <p className="text-sm text-slate-600 mt-1">{t('datasets.uploadModalSubtitle')}</p>

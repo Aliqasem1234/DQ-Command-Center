@@ -43,7 +43,7 @@ export function GovernancePage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{t('governance.title')}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('governance.title')}</h1>
           <p className="text-slate-600 text-sm mt-1">{t('governance.subtitle')}</p>
         </div>
       </div>
@@ -229,8 +229,8 @@ function AssignmentFormModal({ onCancel, onCreated }: { onCancel: () => void; on
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">{t('governance.assignRole')}</h2>
         </div>
@@ -434,8 +434,8 @@ function PolicyFormModal({ onCancel, onCreated }: { onCancel: () => void; onCrea
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">{t('governance.newPolicy')}</h2>
         </div>

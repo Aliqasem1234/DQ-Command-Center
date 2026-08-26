@@ -79,7 +79,7 @@ export default function DataQualityRulesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-slate-900">{t('dataQuality.rules')}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('dataQuality.rules')}</h1>
         <button className="flex items-center gap-2 btn-primary" onClick={() => setIsCreating(true)}>
           <Plus size={18} />
           {t('common.add')}
@@ -102,39 +102,39 @@ export default function DataQualityRulesPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="border-b border-slate-200 bg-slate-50">
+              <thead>
                 <tr>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('common.name')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('dataQuality.dataSource')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('dataQuality.dimensions')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('dataQuality.severity')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('common.status')}</th>
-                  <th className="text-right px-6 py-3 text-sm font-semibold text-slate-900">{t('common.actions')}</th>
+                  <th>{t('common.name')}</th>
+                  <th>{t('dataQuality.dataSource')}</th>
+                  <th>{t('dataQuality.dimensions')}</th>
+                  <th>{t('dataQuality.severity')}</th>
+                  <th>{t('common.status')}</th>
+                  <th className="text-right">{t('common.actions')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {rules.map((rule) => (
-                  <tr key={rule.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{rule.name}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{rule.data_source || '—'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 capitalize">{rule.dimension}</td>
-                    <td className="px-6 py-4 text-sm">
+                  <tr key={rule.id}>
+                    <td className="font-medium text-slate-900">{rule.name}</td>
+                    <td className="text-slate-500">{rule.data_source || '—'}</td>
+                    <td className="text-slate-600 capitalize">{rule.dimension}</td>
+                    <td>
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                          rule.severity === 'critical' ? 'bg-red-100 text-red-800' :
-                          rule.severity === 'high' ? 'bg-orange-100 text-orange-800' :
-                          'bg-yellow-100 text-yellow-800'
+                        className={`badge capitalize ${
+                          rule.severity === 'critical' ? 'badge-error' :
+                          rule.severity === 'high' ? 'badge-warning' :
+                          'badge-warning'
                         }`}
                       >
+                        <span className="badge-dot" />
                         {rule.severity}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm">
+                    <td>
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                          rule.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'
-                        }`}
+                        className={`badge capitalize ${rule.status === 'active' ? 'badge-success' : 'badge-info'}`}
                       >
+                        <span className="badge-dot" />
                         {rule.status}
                       </span>
                     </td>
@@ -208,8 +208,8 @@ function RuleFormModal({
   const [targetField, setTargetField] = useState(initial?.target_field ?? '');
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">
             {initial ? t('common.edit') : t('common.add')} {t('dataQuality.title')}

@@ -59,7 +59,7 @@ export function UserListPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-slate-900">{t('nav.users')}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('nav.users')}</h1>
         <button className="flex items-center gap-2 btn-primary" onClick={() => setIsCreating(true)}>
           <Plus size={18} />
           {t('common.add')}
@@ -82,27 +82,31 @@ export function UserListPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="border-b border-slate-200 bg-slate-50">
+              <thead>
                 <tr>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('auth.email')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('auth.fullName')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('common.departments')}</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-slate-900">{t('common.status')}</th>
-                  <th className="text-right px-6 py-3 text-sm font-semibold text-slate-900">{t('common.actions')}</th>
+                  <th>{t('auth.fullName')}</th>
+                  <th>{t('auth.email')}</th>
+                  <th>{t('common.departments')}</th>
+                  <th>{t('common.status')}</th>
+                  <th className="text-right">{t('common.actions')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 text-sm text-slate-900">{user.email}</td>
-                    <td className="px-6 py-4 text-sm text-slate-900">{user.full_name}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{user.department_name || '—'}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <span
-                        className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                          user.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
+                  <tr key={user.id}>
+                    <td>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                          {user.full_name?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <span className="font-medium text-slate-900">{user.full_name}</span>
+                      </div>
+                    </td>
+                    <td className="text-slate-500">{user.email}</td>
+                    <td className="text-slate-500">{user.department_name || '—'}</td>
+                    <td>
+                      <span className={`badge ${user.is_active ? 'badge-success' : 'badge-info'}`}>
+                        <span className="badge-dot" />
                         {user.is_active ? t('common.active') : t('common.inactive')}
                       </span>
                     </td>
@@ -162,8 +166,8 @@ function UserFormModal({
   const [password, setPassword] = useState('');
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">
             {t('common.add')} {t('auth.user')}

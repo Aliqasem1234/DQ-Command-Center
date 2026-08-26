@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, ListChecks, Zap, Gauge } from 'lucide-react';
 import { dataQualityService } from '../../services/dataQualityService';
 import { getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
@@ -21,7 +21,7 @@ export default function DataQualityMonitoringPage() {
   if (error) {
     return (
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-6">{t('dataQuality.monitoring')}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-6">{t('dataQuality.monitoring')}</h1>
         <div className="card-lg p-6 text-sm text-red-700">{getErrorMessage(error)}</div>
       </div>
     );
@@ -31,21 +31,34 @@ export default function DataQualityMonitoringPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-slate-900 mb-6">{t('dataQuality.monitoring')}</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-6">{t('dataQuality.monitoring')}</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
         <div className="card-lg">
-          <p className="text-sm text-slate-600 mb-1">{t('common.totalDatasets')}</p>
-          <p className="text-3xl font-bold text-slate-900">{metrics?.total_rules ?? 0}</p>
+          <div className="icon-badge icon-badge-slate">
+            <ListChecks className="w-5 h-5" />
+          </div>
+          <p className="text-sm text-slate-500 mt-3">{t('common.rules')}</p>
+          <p className="text-3xl font-bold tracking-tight text-slate-900 mt-0.5">{metrics?.total_rules ?? 0}</p>
         </div>
         <div className="card-lg">
-          <p className="text-sm text-slate-600 mb-1">{t('common.activeRules')}</p>
-          <p className="text-3xl font-bold text-primary-600">{metrics?.active_rules ?? 0}</p>
+          <div className="icon-badge icon-badge-blue">
+            <Zap className="w-5 h-5" />
+          </div>
+          <p className="text-sm text-slate-500 mt-3">{t('common.activeRules')}</p>
+          <p className="text-3xl font-bold text-primary-600 mt-0.5">{metrics?.active_rules ?? 0}</p>
         </div>
         <div className="card-lg">
-          <p className="text-sm text-slate-600 mb-1">{t('common.healthScore')}</p>
+          <div className={`icon-badge ${
+            (metrics?.overall_pass_rate ?? 0) >= 90 ? 'icon-badge-green'
+            : (metrics?.overall_pass_rate ?? 0) >= 70 ? 'icon-badge-orange'
+            : 'icon-badge-red'
+          }`}>
+            <Gauge className="w-5 h-5" />
+          </div>
+          <p className="text-sm text-slate-500 mt-3">{t('common.healthScore')}</p>
           <p
-            className={`text-3xl font-bold ${
+            className={`text-3xl font-bold mt-0.5 ${
               (metrics?.overall_pass_rate ?? 0) >= 90
                 ? 'text-green-600'
                 : (metrics?.overall_pass_rate ?? 0) >= 70

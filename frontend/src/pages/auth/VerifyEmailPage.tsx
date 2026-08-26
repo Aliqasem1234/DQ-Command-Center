@@ -35,8 +35,8 @@ export function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <div className="card space-y-4 text-center">
-      <h2 className="text-2xl font-bold text-slate-900">{t('auth.verifyEmail')}</h2>
+    <div className="card-lg space-y-4 text-center">
+      <h2 className="text-xl font-bold text-slate-900">{t('auth.verifyEmail')}</h2>
 
       {status === 'verifying' && (
         <div className="flex flex-col items-center gap-3 py-6">

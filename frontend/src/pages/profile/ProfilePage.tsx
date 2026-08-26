@@ -37,7 +37,7 @@ export function ProfilePage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-3xl font-bold text-slate-900 mb-6">{t('nav.settings')}</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-6">{t('nav.settings')}</h1>
 
       {message && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
