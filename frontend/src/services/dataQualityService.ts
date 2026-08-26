@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { api } from './api';
 import {
   DataQualityRule,
   CreateDataQualityRuleRequest,
@@ -7,17 +7,10 @@ import {
   DataQualityMetrics,
 } from '../types/dataQuality';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:80/api';
-
-const api = axios.create({
-  baseURL: `${API_BASE_URL}/v1/data-quality`,
-  withCredentials: true,
-});
-
 export const dataQualityService = {
   // Rules CRUD
   createRule: async (data: CreateDataQualityRuleRequest): Promise<DataQualityRule> => {
-    const response = await api.post('/rules', data);
+    const response = await api.post('/v1/data-quality/rules', data);
     return response.data;
   },
 
@@ -27,28 +20,26 @@ export const dataQualityService = {
     page: number = 1,
     pageSize: number = 10
   ): Promise<DataQualityRuleListResponse> => {
-    const params = new URLSearchParams();
-    if (dimension) params.append('dimension', dimension);
-    if (status) params.append('status', status);
-    params.append('page', page.toString());
-    params.append('page_size', pageSize.toString());
+    const params: Record<string, string | number> = { page, page_size: pageSize };
+    if (dimension) params.dimension = dimension;
+    if (status) params.status = status;
 
-    const response = await api.get('/rules', { params });
+    const response = await api.get('/v1/data-quality/rules', { params });
     return response.data;
   },
 
   getRule: async (ruleId: string): Promise<DataQualityRule> => {
-    const response = await api.get(`/rules/${ruleId}`);
+    const response = await api.get(`/v1/data-quality/rules/${ruleId}`);
     return response.data;
   },
 
   updateRule: async (ruleId: string, data: UpdateDataQualityRuleRequest): Promise<DataQualityRule> => {
-    const response = await api.put(`/rules/${ruleId}`, data);
+    const response = await api.put(`/v1/data-quality/rules/${ruleId}`, data);
     return response.data;
   },
 
   deleteRule: async (ruleId: string): Promise<void> => {
-    await api.delete(`/rules/${ruleId}`);
+    await api.delete(`/v1/data-quality/rules/${ruleId}`);
   },
 
   // Results
@@ -57,17 +48,15 @@ export const dataQualityService = {
     page: number = 1,
     pageSize: number = 10
   ): Promise<DataQualityRuleListResponse> => {
-    const params = new URLSearchParams();
-    params.append('page', page.toString());
-    params.append('page_size', pageSize.toString());
-
-    const response = await api.get(`/rules/${ruleId}/results`, { params });
+    const response = await api.get(`/v1/data-quality/rules/${ruleId}/results`, {
+      params: { page, page_size: pageSize },
+    });
     return response.data;
   },
 
   // Metrics
   getMetrics: async (): Promise<DataQualityMetrics> => {
-    const response = await api.get('/metrics');
+    const response = await api.get('/v1/data-quality/metrics');
     return response.data;
   },
 };

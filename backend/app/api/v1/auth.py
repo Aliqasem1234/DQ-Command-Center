@@ -13,6 +13,7 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     VerifyEmailRequest,
+    UpdateProfileRequest,
     ChangePasswordRequest,
     MessageResponse,
     UserResponse,
@@ -196,3 +197,17 @@ async def get_current_user_endpoint(
     current_user: User = Depends(get_current_user_from_token),
 ):
     return auth_service.user_to_response(current_user)
+
+
+@router.put(
+    "/auth/me",
+    response_model=UserResponse,
+    summary="Update the current authenticated user's own profile",
+)
+async def update_profile(
+    body: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await auth_service.update_profile(db, current_user, body.full_name)
+    return auth_service.user_to_response(user)

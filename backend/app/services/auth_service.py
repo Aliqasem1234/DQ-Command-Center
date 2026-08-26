@@ -6,8 +6,10 @@ from uuid import UUID
 import secrets
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.models.role import UserRole
 from app.core.security import (
     hash_password,
     verify_password,
@@ -87,7 +89,11 @@ async def login_user(
 ) -> Tuple[User, str, str]:
     now = datetime.now(timezone.utc)
 
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.roles).selectinload(UserRole.role))
+        .where(User.email == email)
+    )
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -246,6 +252,19 @@ async def verify_email(db: AsyncSession, token: str) -> bool:
     return True
 
 
+async def update_profile(
+    db: AsyncSession,
+    user: User,
+    full_name: str,
+) -> User:
+    user.full_name = full_name
+    user.updated_at = datetime.now(timezone.utc)
+
+    await db.flush()
+    await db.commit()
+    return user
+
+
 async def change_password(
     db: AsyncSession,
     user: User,
@@ -267,6 +286,10 @@ def user_to_response(user: User) -> UserResponse:
     if hasattr(user, 'department_rel') and user.department_rel:
         dept_name = user.department_rel.name
 
+    roles = []
+    if user.roles:
+        roles = [ur.role.name for ur in user.roles if ur.role]
+
     return UserResponse(
         id=str(user.id),
         email=user.email,
@@ -279,4 +302,5 @@ def user_to_response(user: User) -> UserResponse:
         is_verified=user.is_verified,
         is_super_admin=user.is_super_admin,
         created_at=user.created_at,
+        roles=roles,
     )

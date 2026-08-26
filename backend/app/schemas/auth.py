@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 
@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     is_super_admin: bool
     created_at: datetime
+    roles: List[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -59,6 +60,10 @@ class ResetPasswordRequest(BaseModel):
 
 class VerifyEmailRequest(BaseModel):
     token: str
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
 
 
 class ChangePasswordRequest(BaseModel):

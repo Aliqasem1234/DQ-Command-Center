@@ -63,4 +63,9 @@ export const authService = {
     const response = await api.get<UserResponse>('/v1/auth/me');
     return response.data;
   },
+
+  async updateProfile(fullName: string): Promise<UserResponse> {
+    const response = await api.put<UserResponse>('/v1/auth/me', { full_name: fullName });
+    return response.data;
+  },
 };
