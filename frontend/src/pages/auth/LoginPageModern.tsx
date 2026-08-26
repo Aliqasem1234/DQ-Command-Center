@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, Eye, EyeOff, Loader } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -8,6 +9,7 @@ interface LoginError {
 }
 
 export function LoginPageModern() {
+  const { t } = useTranslation();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +24,7 @@ export function LoginPageModern() {
 
     const result = await login({ email, password });
     if (!result.success) {
-      setError({ message: result.error || 'Login failed' });
+      setError({ message: result.error || t('auth.loginFailed') });
     }
     setLoading(false);
   };
@@ -55,7 +57,7 @@ export function LoginPageModern() {
             {/* Email Field */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Email Address
+                {t('auth.email')}
               </label>
               <input
                 type="email"
@@ -63,7 +65,7 @@ export function LoginPageModern() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="input-base"
-                placeholder="you@company.com"
+                placeholder={t('auth.emailPlaceholder')}
                 disabled={loading}
               />
             </div>
@@ -72,10 +74,10 @@ export function LoginPageModern() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-slate-700">
-                  Password
+                  {t('auth.password')}
                 </label>
                 <a href="/forgot-password" className="text-sm text-primary-600 hover:text-primary-700">
-                  Forgot?
+                  {t('auth.forgotShort')}
                 </a>
               </div>
               <div className="relative">
@@ -93,6 +95,7 @@ export function LoginPageModern() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   disabled={loading}
+                  aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4" />
@@ -112,10 +115,10 @@ export function LoginPageModern() {
               {loading ? (
                 <>
                   <Loader className="w-4 h-4 animate-spin" />
-                  Signing in...
+                  {t('auth.signingIn')}
                 </>
               ) : (
-                'Sign In'
+                t('auth.login')
               )}
             </button>
           </form>
@@ -123,9 +126,9 @@ export function LoginPageModern() {
           {/* Register Link */}
           <div className="mt-6 pt-6 border-t border-slate-200 text-center">
             <p className="text-slate-600 text-sm">
-              Don't have an account?{' '}
+              {t('auth.noAccount')}{' '}
               <a href="/register" className="text-primary-600 hover:text-primary-700 font-medium">
-                Register here
+                {t('auth.registerHere')}
               </a>
             </p>
           </div>
@@ -133,7 +136,7 @@ export function LoginPageModern() {
 
         {/* Footer */}
         <p className="text-center text-xs text-slate-500 mt-6">
-          © 2024 Data Quality Command Center. All rights reserved.
+          {t('app.copyright', { year: new Date().getFullYear() })}
         </p>
       </div>
     </div>

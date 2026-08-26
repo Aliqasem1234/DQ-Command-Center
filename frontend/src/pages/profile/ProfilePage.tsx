@@ -86,7 +86,7 @@ export function ProfilePage() {
               </label>
               <input
                 type="text"
-                value={user?.is_super_admin ? 'Super Admin' : user?.roles?.[0] || '-'}
+                value={user?.is_super_admin ? t('profile.superAdmin') : user?.roles?.[0] || '-'}
                 disabled
                 className="input-base bg-slate-50 cursor-not-allowed"
               />

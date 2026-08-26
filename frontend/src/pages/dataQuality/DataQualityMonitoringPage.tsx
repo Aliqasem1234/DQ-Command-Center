@@ -62,7 +62,7 @@ export default function DataQualityMonitoringPage() {
         {dimensionStats.length === 0 ? (
           <EmptyState
             title={t('common.noData')}
-            message="Once quality rules are created for each dimension, monitoring data will appear here."
+            message={t('dataQuality.noMonitoringData')}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -88,12 +88,12 @@ export default function DataQualityMonitoringPage() {
                           {isHealthy ? (
                             <>
                               <CheckCircle size={18} className="text-green-600" />
-                              <span className="text-sm text-green-600 font-medium">Healthy</span>
+                              <span className="text-sm text-green-600 font-medium">{t('dataQuality.healthy')}</span>
                             </>
                           ) : (
                             <>
                               <AlertCircle size={18} className="text-yellow-600" />
-                              <span className="text-sm text-yellow-600 font-medium">Warning</span>
+                              <span className="text-sm text-yellow-600 font-medium">{t('dataQuality.warning')}</span>
                             </>
                           )}
                         </div>

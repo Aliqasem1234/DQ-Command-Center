@@ -15,7 +15,7 @@ export function VerifyEmailPage() {
   useEffect(() => {
     if (!token) {
       setStatus('error');
-      setError('Missing or invalid verification link.');
+      setError(t('auth.invalidVerificationLink'));
       return;
     }
     let cancelled = false;

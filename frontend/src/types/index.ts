@@ -7,3 +7,4 @@ export * from './role';
 export * from './audit';
 export * from './dashboard';
 export * from './dataset';
+export * from './governance';

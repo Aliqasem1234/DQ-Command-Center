@@ -46,7 +46,7 @@ export function RegisterPage() {
         full_name: formData.full_name,
       });
       if (result.success) {
-        setMessage(result.message || 'Registration successful. Please check your email to verify your account.');
+        setMessage(result.message || t('auth.registerSuccess'));
         setTimeout(() => navigate('/login'), 2500);
       } else {
         setError(result.error || t('auth.registrationFailed'));

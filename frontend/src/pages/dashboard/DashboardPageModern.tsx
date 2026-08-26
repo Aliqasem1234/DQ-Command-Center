@@ -1,19 +1,35 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
-  AlertCircle, CheckCircle, Clock, TrendingUp,
-  RefreshCw, Bell, User, LogOut
+  AlertCircle, CheckCircle, Clock, TrendingUp, RefreshCw,
 } from 'lucide-react';
 import { dashboardService } from '../../services/dashboardService';
-import { useAuth } from '../../hooks/useAuth';
+import { useThemeStore } from '../../store/themeStore';
 import { EmptyState } from '../../components/common/EmptyState';
 import type { DashboardHealthSummary, QualityIssueSummary } from '../../types';
 
+const STATUS_KEY: Record<string, string> = {
+  excellent: 'dashboard.statusExcellent',
+  good: 'dashboard.statusGood',
+  fair: 'dashboard.statusFair',
+  poor: 'dashboard.statusPoor',
+  critical: 'dashboard.statusCritical',
+};
+
+const TREND_KEY: Record<string, string> = {
+  improving: 'dashboard.trendImproving',
+  degrading: 'dashboard.trendDegrading',
+  stable: 'dashboard.trendStable',
+};
+
 export function DashboardPageModern() {
-  const { logout } = useAuth();
+  const { t } = useTranslation();
+  const { mode } = useThemeStore();
+  const isDark = mode === 'dark';
   const [metrics, setMetrics] = useState<DashboardHealthSummary | null>(null);
   const [issues, setIssues] = useState<QualityIssueSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +51,7 @@ export function DashboardPageModern() {
       setIssues(openIssues);
     } catch (err) {
       console.error('Failed to fetch dashboard metrics:', err);
-      setError('Could not load dashboard data. Please try again.');
+      setError(t('dashboard.couldNotLoad'));
     } finally {
       setLoading(false);
     }
@@ -52,7 +68,7 @@ export function DashboardPageModern() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading dashboard...</p>
+          <p className="text-slate-600">{t('dashboard.loadingDashboard')}</p>
         </div>
       </div>
     );
@@ -64,47 +80,34 @@ export function DashboardPageModern() {
     return 'text-red-600';
   };
 
-  return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="surface border-b">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Data Quality Dashboard</h1>
-            <p className="text-slate-600 text-sm mt-1">Real-time quality metrics and insights</p>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="btn-ghost flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-            
-            <button className="btn-ghost" title="Notifications (coming soon)" disabled>
-              <Bell className="w-4 h-4" />
-            </button>
+  const axisColor = isDark ? '#64748b' : '#94a3b8';
+  const gridColor = isDark ? '#334155' : '#e2e8f0';
+  const tooltipStyle = isDark
+    ? { backgroundColor: '#1e293b', border: '1px solid #334155', color: '#f1f5f9' }
+    : { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a' };
 
-            <div className="border-l border-slate-200 pl-4 flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-primary-600" />
-              </div>
-              <button className="btn-ghost p-0" onClick={() => logout()} title="Log out">
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">{t('dashboard.title')}</h1>
+          <p className="text-slate-600 text-sm mt-1">{t('dashboard.subtitle')}</p>
         </div>
-      </header>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="btn-ghost flex items-center gap-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {t('common.refresh')}
+        </button>
+      </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div>
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-sm text-red-800">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+          <div className="alert alert-error mb-6">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
             {error}
           </div>
         )}
@@ -120,7 +123,7 @@ export function DashboardPageModern() {
             }`}>
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-slate-600 text-sm font-medium mb-1">Overall Health</p>
+                  <p className="text-slate-600 text-sm font-medium mb-1">{t('dashboard.overallHealth')}</p>
                   <p className={`text-4xl font-bold ${getScoreColor(metrics.health_score)}`}>
                     {Math.round(metrics.health_score)}%
                   </p>
@@ -133,8 +136,8 @@ export function DashboardPageModern() {
                   <AlertCircle className="w-6 h-6 text-red-600" />
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-4 pt-4 border-t border-slate-200 capitalize">
-                Status: {metrics.status}
+              <p className="text-xs text-slate-500 mt-4 pt-4 border-t border-slate-200">
+                {t('dashboard.statusLabel', { status: t(STATUS_KEY[metrics.status] ?? 'dashboard.statusFair') })}
               </p>
             </div>
 
@@ -142,13 +145,13 @@ export function DashboardPageModern() {
             <div className="card-lg border-l-4 border-l-orange-600">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-slate-600 text-sm font-medium mb-1">Open Issues</p>
+                  <p className="text-slate-600 text-sm font-medium mb-1">{t('dashboard.openIssues')}</p>
                   <p className="text-4xl font-bold text-orange-600">{metrics.open_issues}</p>
                 </div>
                 <AlertCircle className="w-6 h-6 text-orange-600" />
               </div>
               <p className="text-xs text-slate-500 mt-4 pt-4 border-t border-slate-200">
-                {metrics.critical_issues} critical
+                {t('dashboard.criticalCount', { count: metrics.critical_issues })}
               </p>
             </div>
 
@@ -156,13 +159,13 @@ export function DashboardPageModern() {
             <div className="card-lg border-l-4 border-l-blue-600">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-slate-600 text-sm font-medium mb-1">Datasets</p>
+                  <p className="text-slate-600 text-sm font-medium mb-1">{t('nav.datasets')}</p>
                   <p className="text-4xl font-bold text-blue-600">{metrics.total_datasets}</p>
                 </div>
                 <Clock className="w-6 h-6 text-blue-600" />
               </div>
               <p className="text-xs text-slate-500 mt-4 pt-4 border-t border-slate-200">
-                Being monitored
+                {t('dashboard.beingMonitored')}
               </p>
             </div>
 
@@ -170,13 +173,13 @@ export function DashboardPageModern() {
             <div className="card-lg border-l-4 border-l-purple-600">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-slate-600 text-sm font-medium mb-1">Quality Rules</p>
+                  <p className="text-slate-600 text-sm font-medium mb-1">{t('dataQuality.rules')}</p>
                   <p className="text-4xl font-bold text-purple-600">{metrics.total_quality_rules}</p>
                 </div>
                 <CheckCircle className="w-6 h-6 text-purple-600" />
               </div>
               <p className="text-xs text-slate-500 mt-4 pt-4 border-t border-slate-200">
-                Active
+                {t('common.active')}
               </p>
             </div>
           </div>
@@ -188,8 +191,8 @@ export function DashboardPageModern() {
           <div className="lg:col-span-2 card-lg">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Quality Trend</h2>
-                <p className="text-sm text-slate-600">Last 30 days</p>
+                <h2 className="text-lg font-semibold text-slate-900">{t('dashboard.qualityTrend')}</h2>
+                <p className="text-sm text-slate-600">{t('dashboard.last30Days')}</p>
               </div>
               {metrics && (
                 <div className={`flex items-center gap-1 text-sm ${
@@ -197,33 +200,31 @@ export function DashboardPageModern() {
                   metrics.recent_trend === 'degrading' ? 'text-red-600' : 'text-slate-500'
                 }`}>
                   <TrendingUp className="w-4 h-4" />
-                  {metrics.recent_trend}
+                  {t(TREND_KEY[metrics.recent_trend] ?? 'dashboard.trendStable')}
                 </div>
               )}
             </div>
             {metrics && metrics.daily_trend.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={metrics.daily_trend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                  <XAxis dataKey="date" stroke={axisColor} />
+                  <YAxis stroke={axisColor} />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Line
                     type="monotone"
                     dataKey="pass_rate"
                     stroke="#0ea5e9"
                     strokeWidth={2}
                     dot={false}
-                    name="Pass Rate %"
+                    name={t('dashboard.passRateLegend')}
                   />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <EmptyState
-                title="No quality check runs yet"
-                message="Once quality rules have been executed, the pass-rate trend will appear here."
+                title={t('dashboard.noRunsTitle')}
+                message={t('dashboard.noRunsMessage')}
               />
             )}
           </div>
@@ -231,17 +232,17 @@ export function DashboardPageModern() {
           {/* Quality by Dimension */}
           {metrics && (
             <div className="card-lg">
-              <h2 className="text-lg font-semibold text-slate-900 mb-6">Quality Dimensions</h2>
+              <h2 className="text-lg font-semibold text-slate-900 mb-6">{t('dashboard.qualityDimensions')}</h2>
               {Object.keys(metrics.dimensions).length > 0 ? (
                 <div className="space-y-4">
                   {Object.entries(metrics.dimensions).map(([name, dim]) => (
                     <div key={name}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-slate-700 capitalize">
-                          {name.replace('_', ' ')}
+                        <span className="text-sm font-medium text-slate-700">
+                          {t(`dimensions.${name}`, { defaultValue: name.replace('_', ' ') })}
                         </span>
                         <span className="text-sm font-semibold text-slate-900">
-                          {dim.score !== null ? `${Math.round(dim.score)}%` : 'No data'}
+                          {dim.score !== null ? `${Math.round(dim.score)}%` : t('common.noData')}
                         </span>
                       </div>
                       <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -254,7 +255,7 @@ export function DashboardPageModern() {
                   ))}
                 </div>
               ) : (
-                <EmptyState title="No quality rules configured yet" />
+                <EmptyState title={t('dashboard.noRulesConfigured')} />
               )}
             </div>
           )}
@@ -264,8 +265,8 @@ export function DashboardPageModern() {
         <div className="card-lg">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Recent Issues</h2>
-              <p className="text-sm text-slate-600">Most recently detected open issues</p>
+              <h2 className="text-lg font-semibold text-slate-900">{t('dashboard.recentIssues')}</h2>
+              <p className="text-sm text-slate-600">{t('dashboard.recentIssuesSubtitle')}</p>
             </div>
           </div>
 
@@ -274,32 +275,29 @@ export function DashboardPageModern() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200">
-                    <th className="text-left py-3 px-4 font-medium text-slate-700">Issue</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-700">Dataset</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-700">Severity</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-700">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-700">Detected</th>
+                    <th className="text-left py-3 px-4 font-medium text-slate-700">{t('dashboard.issueColumn')}</th>
+                    <th className="text-left py-3 px-4 font-medium text-slate-700">{t('common.dataset')}</th>
+                    <th className="text-left py-3 px-4 font-medium text-slate-700">{t('dataQuality.severity')}</th>
+                    <th className="text-left py-3 px-4 font-medium text-slate-700">{t('common.status')}</th>
+                    <th className="text-left py-3 px-4 font-medium text-slate-700">{t('dashboard.detectedColumn')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {issues.map((row) => (
                     <tr key={row.id} className="border-b border-slate-200 hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-900">{row.description || 'Untitled issue'}</td>
+                      <td className="py-3 px-4 text-slate-900">{row.description || t('dashboard.untitledIssue')}</td>
                       <td className="py-3 px-4 text-slate-600">{row.dataset_name || '—'}</td>
                       <td className="py-3 px-4">
-                        <span className={`inline-block px-2 py-1 rounded text-xs font-medium capitalize ${
-                          row.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                          row.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>
+                        <span className={`badge ${
+                          row.severity === 'critical' ? 'badge-error' :
+                          row.severity === 'high' ? 'badge-warning' :
+                          'badge-warning'
+                        } capitalize`}>
                           {row.severity}
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`inline-block px-2 py-1 rounded text-xs font-medium capitalize ${
-                          row.status === 'open' ? 'bg-red-100 text-red-700' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
+                        <span className={`badge ${row.status === 'open' ? 'badge-error' : 'badge-info'} capitalize`}>
                           {row.status.replace('_', ' ')}
                         </span>
                       </td>
@@ -314,8 +312,8 @@ export function DashboardPageModern() {
           ) : (
             <EmptyState
               icon={<CheckCircle className="w-10 h-10" />}
-              title="No open issues"
-              message="Everything is passing quality checks right now."
+              title={t('dashboard.noOpenIssuesTitle')}
+              message={t('dashboard.noOpenIssuesMessage')}
             />
           )}
         </div>

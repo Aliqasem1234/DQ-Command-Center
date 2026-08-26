@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import i18n from '../../i18n/config';
 
 interface Props {
   children: ReactNode;
@@ -33,10 +34,10 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <h2 className="text-xl font-bold text-slate-900 mb-2">
-            Something went wrong
+            {i18n.t('errors.somethingWentWrong')}
           </h2>
           <p className="text-sm text-slate-600 mb-6 max-w-md">
-            {this.state.error?.message || 'An unexpected error occurred'}
+            {this.state.error?.message || i18n.t('errors.unexpectedError')}
           </p>
           <button
             onClick={() => {
@@ -45,7 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
             }}
             className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
           >
-            Reload Page
+            {i18n.t('errors.reloadPage')}
           </button>
         </div>
       );

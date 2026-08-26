@@ -131,7 +131,7 @@ async def _store_new_version(
         dataset_id=dataset.id,
         version_number=max_version + 1,
         file_path=relative_path,
-        original_filename=file.filename,
+        original_filename=file_storage_service.safe_display_filename(file.filename),
         file_format=file_format,
         file_size_bytes=size_bytes,
         is_original=(max_version == 0),

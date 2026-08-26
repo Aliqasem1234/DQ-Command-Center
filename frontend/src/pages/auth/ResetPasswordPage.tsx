@@ -23,7 +23,7 @@ export function ResetPasswordPage() {
     setMessage('');
 
     if (!token) {
-      setError('Missing or invalid reset link.');
+      setError(t('auth.invalidResetLink'));
       return;
     }
     if (password !== passwordConfirm) {

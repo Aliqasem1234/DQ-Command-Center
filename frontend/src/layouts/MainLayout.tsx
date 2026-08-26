@@ -17,6 +17,7 @@ import {
   Eye as MonitorIcon,
   ChevronDown as ChevronDownIcon,
   Database as DatasetsIcon,
+  Landmark as GovernanceIcon,
 } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
@@ -29,6 +30,7 @@ const menuItems = [
   { path: '/datasets', label: 'nav.datasets', icon: DatasetsIcon },
   { path: '/data-quality/rules', label: 'dataQuality.rules', icon: QualityIcon },
   { path: '/data-quality/monitoring', label: 'dataQuality.monitoring', icon: MonitorIcon },
+  { path: '/governance', label: 'nav.governance', icon: GovernanceIcon },
   { path: '/departments', label: 'nav.departments', icon: DeptIcon },
   { path: '/users', label: 'nav.users', icon: PeopleIcon },
   { path: '/roles', label: 'nav.roles', icon: RolesIcon },
@@ -95,6 +97,7 @@ export function MainLayout() {
           <button
             onClick={handleDrawerToggle}
             className="md:hidden p-2 hover:bg-slate-100 rounded-lg"
+            aria-label={mobileOpen ? t('common.closeMenu') : t('common.openMenu')}
           >
             {mobileOpen ? (
               <CloseIcon className="w-5 h-5" />
@@ -112,10 +115,11 @@ export function MainLayout() {
             <select
               value={i18n.language}
               onChange={(e) => handleLanguageChange(e.target.value)}
-              className="px-2 py-1 text-sm border border-slate-300 rounded-lg bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              aria-label={t('language.select')}
+              className="input-base w-auto px-2 py-1 text-sm"
             >
-              <option value="en">English</option>
-              <option value="sv">Svenska</option>
+              <option value="en">{t('language.en')}</option>
+              <option value="sv">{t('language.sv')}</option>
             </select>
 
             {/* Theme Toggle */}
@@ -123,6 +127,7 @@ export function MainLayout() {
               onClick={toggleTheme}
               className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
               title={t(mode === 'light' ? 'theme.dark' : 'theme.light')}
+              aria-label={t(mode === 'light' ? 'theme.dark' : 'theme.light')}
             >
               {mode === 'light' ? (
                 <DarkIcon className="w-5 h-5" />
@@ -136,6 +141,9 @@ export function MainLayout() {
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center gap-2 px-3 py-2 hover:bg-slate-100 rounded-lg transition-colors"
+                aria-haspopup="true"
+                aria-expanded={showUserMenu}
+                aria-label={user?.full_name}
               >
                 <div className="w-7 h-7 bg-primary-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
                   {user?.full_name?.charAt(0).toUpperCase() || 'U'}

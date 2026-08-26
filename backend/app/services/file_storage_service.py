@@ -32,6 +32,19 @@ def _upload_root() -> Path:
     return root
 
 
+def safe_display_filename(filename: str | None) -> str | None:
+    """Strip any directory components from a client-supplied filename before
+    storing it as display metadata (shown in the UI and echoed back verbatim
+    in the download response's Content-Disposition header). The on-disk
+    storage path never uses this value - it's generated separately as a
+    UUID - but a raw '../../etc/passwd.csv' style name should still never be
+    persisted or handed back to a client as-is, rather than relying on
+    browsers' own (inconsistent) filename sanitization."""
+    if not filename:
+        return filename
+    return Path(filename).name
+
+
 def validate_extension(filename: str) -> str:
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
