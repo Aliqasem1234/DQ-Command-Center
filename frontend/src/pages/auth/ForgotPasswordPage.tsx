@@ -1,24 +1,28 @@
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../hooks/useAuth';
 
 export function ForgotPasswordPage() {
   const { t } = useTranslation();
+  const { forgotPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setMessage('');
     setIsLoading(true);
-    try {
-      // Password reset would call API
-      setMessage(t('auth.resetEmailSent'));
-    } catch (err) {
-      setMessage(t('auth.resetFailed'));
-    } finally {
-      setIsLoading(false);
+    const result = await forgotPassword(email);
+    if (result.success) {
+      setMessage(result.message || t('auth.resetEmailSent'));
+    } else {
+      setError(result.error || t('auth.resetFailed'));
     }
+    setIsLoading(false);
   };
 
   return (
@@ -29,6 +33,11 @@ export function ForgotPasswordPage() {
       {message && (
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
           {message}
+        </div>
+      )}
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
         </div>
       )}
 

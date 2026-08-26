@@ -1,66 +1,67 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { CheckCircle, XCircle, Loader } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 
 export function VerifyEmailPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [code, setCode] = useState('');
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') || '';
+  const { verifyEmail } = useAuth();
+  const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Auto-redirect if no verification needed
-    const timer = setTimeout(() => navigate('/login'), 3000);
-    return () => clearTimeout(timer);
-  }, [navigate]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
-
-    try {
-      // Email verification would call API
-      navigate('/login');
-    } catch (err: any) {
-      setError(err.message || t('auth.verificationFailed'));
-    } finally {
-      setIsLoading(false);
+    if (!token) {
+      setStatus('error');
+      setError('Missing or invalid verification link.');
+      return;
     }
-  };
+    let cancelled = false;
+    verifyEmail(token).then((result) => {
+      if (cancelled) return;
+      if (result.success) {
+        setStatus('success');
+      } else {
+        setStatus('error');
+        setError(result.error || t('auth.verificationFailed'));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 card">
-      <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('auth.verifyEmail')}</h2>
-      <p className="text-sm text-slate-600 mb-6">{t('auth.enterVerificationCode')}</p>
+    <div className="card space-y-4 text-center">
+      <h2 className="text-2xl font-bold text-slate-900">{t('auth.verifyEmail')}</h2>
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {error}
+      {status === 'verifying' && (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <Loader className="w-8 h-8 text-primary-600 animate-spin" />
+          <p className="text-sm text-slate-600">{t('common.loading')}</p>
         </div>
       )}
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">
-          {t('auth.verificationCode')}
-        </label>
-        <input
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className="input-base text-center text-lg tracking-widest"
-          placeholder="000000"
-          maxLength={6}
-          required
-        />
-      </div>
+      {status === 'success' && (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <CheckCircle className="w-10 h-10 text-green-600" />
+          <p className="text-sm text-slate-700">{t('auth.emailVerified')}</p>
+        </div>
+      )}
 
-      <button type="submit" disabled={isLoading} className="btn-primary w-full">
-        {isLoading ? t('common.loading') : t('auth.verify')}
-      </button>
+      {status === 'error' && (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <XCircle className="w-10 h-10 text-red-600" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
 
-      <p className="text-xs text-slate-500 text-center">{t('auth.redirecting')}</p>
-    </form>
+      <RouterLink to="/login" className="text-primary-600 hover:text-primary-700 font-medium text-sm">
+        {t('auth.backToLogin')}
+      </RouterLink>
+    </div>
   );
 }

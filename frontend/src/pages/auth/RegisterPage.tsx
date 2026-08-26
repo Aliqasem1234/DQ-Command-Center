@@ -18,6 +18,7 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,7 +46,8 @@ export function RegisterPage() {
         full_name: formData.full_name,
       });
       if (result.success) {
-        navigate('/dashboard');
+        setMessage(result.message || 'Registration successful. Please check your email to verify your account.');
+        setTimeout(() => navigate('/login'), 2500);
       } else {
         setError(result.error || t('auth.registrationFailed'));
       }
@@ -63,6 +65,11 @@ export function RegisterPage() {
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           {error}
+        </div>
+      )}
+      {message && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+          {message}
         </div>
       )}
 
@@ -142,7 +149,7 @@ export function RegisterPage() {
 
       <button
         type="submit"
-        disabled={isLoading}
+        disabled={isLoading || !!message}
         className="btn-primary w-full"
       >
         {isLoading ? t('common.loading') : t('auth.register')}

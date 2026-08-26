@@ -1,37 +1,44 @@
 import { useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 
 export function ResetPasswordPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') || '';
+  const { resetPassword } = useAuth();
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
+    setMessage('');
 
+    if (!token) {
+      setError('Missing or invalid reset link.');
+      return;
+    }
     if (password !== passwordConfirm) {
       setError(t('auth.passwordsMustMatch'));
-      setIsLoading(false);
       return;
     }
 
-    try {
-      // Password reset would call API
-      navigate('/login');
-    } catch (err: any) {
-      setError(err.message || t('auth.resetFailed'));
-    } finally {
-      setIsLoading(false);
+    setIsLoading(true);
+    const result = await resetPassword(token, password);
+    if (result.success) {
+      setMessage(result.message || t('auth.passwordResetSuccess'));
+    } else {
+      setError(result.error || t('auth.resetFailed'));
     }
+    setIsLoading(false);
   };
 
   return (
@@ -41,6 +48,11 @@ export function ResetPasswordPage() {
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           {error}
+        </div>
+      )}
+      {message && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+          {message}
         </div>
       )}
 
