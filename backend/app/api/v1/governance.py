@@ -4,21 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_permission
+from app.dependencies import get_current_user_from_token
+from app.core.rbac import require_permission
 from app.models.user import User
 from app.schemas.data_governance import (
-    DataAssetCreate,
-    DataAssetUpdate,
-    DataAssetResponse,
-    DataAssetListResponse,
+    GovernanceAssignmentCreate,
+    GovernanceAssignmentUpdate,
+    GovernanceAssignmentResponse,
+    GovernanceAssignmentListResponse,
     GovernancePolicyCreate,
     GovernancePolicyUpdate,
     GovernancePolicyResponse,
     GovernancePolicyListResponse,
-    DataStewardshipCreate,
-    DataStewardshipUpdate,
-    DataStewardshipResponse,
-    DataStewardshipListResponse,
 )
 from app.services.governance_service import GovernanceService
 
@@ -27,125 +24,125 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/governance", tags=["Data Governance"])
 
 
-# Data Asset Endpoints
-@router.post(
-    "/assets",
-    response_model=DataAssetResponse,
-    status_code=201,
-    summary="Create data asset",
-)
-async def create_data_asset(
-    data: DataAssetCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_permission("data_governance:manage")),
-):
-    """Create a new data asset"""
-    asset = await GovernanceService.create_data_asset(db, data, current_user.id)
+def _assignment_to_response(assignment) -> dict:
+    scope_name = None
+    if assignment.domain:
+        scope_name = assignment.domain.name
+    elif assignment.dataset:
+        scope_name = assignment.dataset.name
+    elif assignment.element:
+        scope_name = assignment.element.name
+
     return {
-        **asset.__dict__,
-        "data_owner_name": asset.data_owner.full_name if asset.data_owner else None,
-        "data_steward_name": asset.data_steward.full_name if asset.data_steward else None,
+        "id": assignment.id,
+        "domain_id": assignment.domain_id,
+        "dataset_id": assignment.dataset_id,
+        "element_id": assignment.element_id,
+        "role": assignment.role,
+        "user_id": assignment.user_id,
+        "user_name": assignment.user.full_name if assignment.user else None,
+        "department_id": assignment.department_id,
+        "responsibility_description": assignment.responsibility_description,
+        "start_date": assignment.start_date,
+        "end_date": assignment.end_date,
+        "is_active": assignment.is_active,
+        "assigned_date": assignment.assigned_date,
+        "scope_name": scope_name,
     }
 
 
-@router.get(
-    "/assets",
-    response_model=DataAssetListResponse,
-    summary="List data assets",
+def _policy_to_response(policy) -> dict:
+    return {
+        **{k: v for k, v in policy.__dict__.items() if not k.startswith("_")},
+        "created_by_name": policy.created_by.full_name if policy.created_by else None,
+    }
+
+
+# Governance Assignment Endpoints (owner / steward / curator / analyst)
+@router.post(
+    "/assignments",
+    response_model=GovernanceAssignmentResponse,
+    status_code=201,
+    summary="Assign a governance role (owner/steward/curator/analyst) to a domain, dataset, or element",
 )
-async def list_data_assets(
-    asset_type: str = Query(None),
-    classification: str = Query(None),
+async def create_assignment(
+    data: GovernanceAssignmentCreate,
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_permission("data_governance:manage")),
+):
+    assignment = await GovernanceService.create_assignment(db, data, current_user.id)
+    return _assignment_to_response(assignment)
+
+
+@router.get(
+    "/assignments",
+    response_model=GovernanceAssignmentListResponse,
+    summary="List governance role assignments",
+)
+async def list_assignments(
+    domain_id: UUID = Query(None),
+    dataset_id: UUID = Query(None),
+    element_id: UUID = Query(None),
+    role: str = Query(None),
+    is_active: bool = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:view")),
 ):
-    """List data assets with filtering"""
-    assets, total = await GovernanceService.list_data_assets(
-        db, asset_type=asset_type, classification=classification, page=page, page_size=page_size
+    assignments, total = await GovernanceService.list_assignments(
+        db,
+        domain_id=domain_id,
+        dataset_id=dataset_id,
+        element_id=element_id,
+        role=role,
+        is_active=is_active,
+        page=page,
+        page_size=page_size,
     )
 
-    items = [
-        {
-            **asset.__dict__,
-            "data_owner_name": asset.data_owner.full_name if asset.data_owner else None,
-            "data_steward_name": asset.data_steward.full_name if asset.data_steward else None,
-        }
-        for asset in assets
-    ]
-
+    items = [_assignment_to_response(a) for a in assignments]
     total_pages = (total + page_size - 1) // page_size
 
-    return DataAssetListResponse(
+    return GovernanceAssignmentListResponse(
         items=items, total=total, page=page, page_size=page_size, total_pages=total_pages
     )
 
 
-@router.get(
-    "/assets/{asset_id}",
-    response_model=DataAssetResponse,
-    summary="Get data asset",
-)
-async def get_data_asset(
-    asset_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_permission("data_governance:view")),
-):
-    """Get a specific data asset"""
-    asset = await GovernanceService.get_data_asset(db, asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-
-    return {
-        **asset.__dict__,
-        "data_owner_name": asset.data_owner.full_name if asset.data_owner else None,
-        "data_steward_name": asset.data_steward.full_name if asset.data_steward else None,
-    }
-
-
 @router.put(
-    "/assets/{asset_id}",
-    response_model=DataAssetResponse,
-    summary="Update data asset",
+    "/assignments/{assignment_id}",
+    response_model=GovernanceAssignmentResponse,
+    summary="Update a governance role assignment",
 )
-async def update_data_asset(
-    asset_id: UUID,
-    data: DataAssetUpdate,
-    current_user: User = Depends(get_current_user),
+async def update_assignment(
+    assignment_id: UUID,
+    data: GovernanceAssignmentUpdate,
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
-    """Update a data asset"""
-    asset = await GovernanceService.update_data_asset(db, asset_id, data, current_user.id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-
-    return {
-        **asset.__dict__,
-        "data_owner_name": asset.data_owner.full_name if asset.data_owner else None,
-        "data_steward_name": asset.data_steward.full_name if asset.data_steward else None,
-    }
+    assignment = await GovernanceService.update_assignment(db, assignment_id, data, current_user.id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return _assignment_to_response(assignment)
 
 
 @router.delete(
-    "/assets/{asset_id}",
+    "/assignments/{assignment_id}",
     status_code=204,
-    summary="Delete data asset",
+    summary="Revoke a governance role assignment",
 )
-async def delete_data_asset(
-    asset_id: UUID,
-    current_user: User = Depends(get_current_user),
+async def revoke_assignment(
+    assignment_id: UUID,
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
-    """Delete a data asset"""
-    success = await GovernanceService.delete_data_asset(db, asset_id, current_user.id)
+    success = await GovernanceService.revoke_assignment(db, assignment_id, current_user.id)
     if not success:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=404, detail="Assignment not found")
 
 
 # Governance Policy Endpoints
@@ -157,16 +154,13 @@ async def delete_data_asset(
 )
 async def create_policy(
     data: GovernancePolicyCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
-    """Create a governance policy"""
-    policy = await GovernanceService.create_governance_policy(db, data, current_user.id)
-    return {
-        **policy.__dict__,
-        "created_by_name": policy.created_by.full_name if policy.created_by else None,
-    }
+    policy = await GovernanceService.create_policy(db, data, current_user.id)
+    policy = await GovernanceService.get_policy(db, policy.id)
+    return _policy_to_response(policy)
 
 
 @router.get(
@@ -175,26 +169,20 @@ async def create_policy(
     summary="List governance policies",
 )
 async def list_policies(
+    domain_id: UUID = Query(None),
+    dataset_id: UUID = Query(None),
     policy_type: str = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:view")),
 ):
-    """List governance policies"""
-    policies, total = await GovernanceService.list_governance_policies(
-        db, policy_type=policy_type, page=page, page_size=page_size
+    policies, total = await GovernanceService.list_policies(
+        db, domain_id=domain_id, dataset_id=dataset_id, policy_type=policy_type, page=page, page_size=page_size
     )
 
-    items = [
-        {
-            **policy.__dict__,
-            "created_by_name": policy.created_by.full_name if policy.created_by else None,
-        }
-        for policy in policies
-    ]
-
+    items = [_policy_to_response(p) for p in policies]
     total_pages = (total + page_size - 1) // page_size
 
     return GovernancePolicyListResponse(
@@ -202,58 +190,52 @@ async def list_policies(
     )
 
 
-# Data Stewardship Endpoints
-@router.post(
-    "/stewardships",
-    response_model=DataStewardshipResponse,
-    status_code=201,
-    summary="Create data stewardship",
-)
-async def create_stewardship(
-    data: DataStewardshipCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_permission("data_governance:manage")),
-):
-    """Create a data stewardship relationship"""
-    stewardship = await GovernanceService.create_data_stewardship(db, data, current_user.id)
-    return {
-        **stewardship.__dict__,
-        "user_name": stewardship.user.full_name if stewardship.user else None,
-        "data_asset_name": stewardship.data_asset.name if stewardship.data_asset else None,
-    }
-
-
 @router.get(
-    "/stewardships",
-    response_model=DataStewardshipListResponse,
-    summary="List data stewardships",
+    "/policies/{policy_id}",
+    response_model=GovernancePolicyResponse,
+    summary="Get governance policy",
 )
-async def list_stewardships(
-    data_asset_id: UUID = Query(None),
-    responsibility_type: str = Query(None),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+async def get_policy(
+    policy_id: UUID,
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:view")),
 ):
-    """List data stewardships"""
-    stewardships, total = await GovernanceService.list_data_stewardships(
-        db, data_asset_id=data_asset_id, responsibility_type=responsibility_type, page=page, page_size=page_size
-    )
+    policy = await GovernanceService.get_policy(db, policy_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return _policy_to_response(policy)
 
-    items = [
-        {
-            **stewardship.__dict__,
-            "user_name": stewardship.user.full_name if stewardship.user else None,
-            "data_asset_name": stewardship.data_asset.name if stewardship.data_asset else None,
-        }
-        for stewardship in stewardships
-    ]
 
-    total_pages = (total + page_size - 1) // page_size
+@router.put(
+    "/policies/{policy_id}",
+    response_model=GovernancePolicyResponse,
+    summary="Update governance policy",
+)
+async def update_policy(
+    policy_id: UUID,
+    data: GovernancePolicyUpdate,
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_permission("data_governance:manage")),
+):
+    policy = await GovernanceService.update_policy(db, policy_id, data, current_user.id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return _policy_to_response(policy)
 
-    return DataStewardshipListResponse(
-        items=items, total=total, page=page, page_size=page_size, total_pages=total_pages
-    )
+
+@router.delete(
+    "/policies/{policy_id}",
+    status_code=204,
+    summary="Delete governance policy",
+)
+async def delete_policy(
+    policy_id: UUID,
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_permission("data_governance:manage")),
+):
+    success = await GovernanceService.delete_policy(db, policy_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Policy not found")

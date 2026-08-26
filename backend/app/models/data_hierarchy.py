@@ -70,6 +70,15 @@ class TargetStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+class GovernancePolicyStatus(str, enum.Enum):
+    """Governance policy lifecycle status"""
+    DRAFT = "draft"
+    APPROVED = "approved"
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+    RETIRED = "retired"
+
+
 # Core Hierarchy Models
 
 class DataDomain(Base):
@@ -96,6 +105,7 @@ class DataDomain(Base):
     domain_steward = relationship("User", foreign_keys=[domain_steward_id])
     datasets = relationship("Dataset", back_populates="domain", cascade="all, delete-orphan")
     governance = relationship("DataGovernance", back_populates="domain", cascade="all, delete-orphan")
+    policies = relationship("GovernancePolicy", back_populates="domain", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<DataDomain {self.name}>"
@@ -146,8 +156,9 @@ class Dataset(Base):
     lineage_sources = relationship("DataLineage", foreign_keys="DataLineage.source_dataset_id", back_populates="source_dataset")
     lineage_targets = relationship("DataLineage", foreign_keys="DataLineage.target_dataset_id", back_populates="target_dataset")
     governance = relationship("DataGovernance", back_populates="dataset", cascade="all, delete-orphan")
+    policies = relationship("GovernancePolicy", back_populates="dataset", cascade="all, delete-orphan")
     quality_targets = relationship("QualityTarget", back_populates="dataset")
-    
+
     __table_args__ = (
         UniqueConstraint("domain_id", "name", name="uq_dataset_domain_name"),
     )
@@ -191,7 +202,7 @@ class DataElement(Base):
     # Relationships
     dataset = relationship("Dataset", back_populates="elements")
     data_owner = relationship("User", foreign_keys=[data_owner_id])
-    metadata = relationship("DataElementMetadata", back_populates="element", uselist=False, cascade="all, delete-orphan")
+    element_metadata = relationship("DataElementMetadata", back_populates="element", uselist=False, cascade="all, delete-orphan")
     quality_rules = relationship("DataQualityRule", back_populates="element")
     governance = relationship("DataGovernance", back_populates="element", cascade="all, delete-orphan")
     quality_targets = relationship("QualityTarget", back_populates="element")
@@ -236,7 +247,7 @@ class DataElementMetadata(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(datetime.now().astimezone().tzinfo))
     
     # Relationships
-    element = relationship("DataElement", back_populates="metadata")
+    element = relationship("DataElement", back_populates="element_metadata")
 
     def __repr__(self):
         return f"<DataElementMetadata {self.element_id}>"
@@ -303,6 +314,41 @@ class DataGovernance(Base):
 
     def __repr__(self):
         return f"<DataGovernance {self.user_id} - {self.role}>"
+
+
+class GovernancePolicy(Base):
+    """Governance policy (retention, access, quality, privacy, etc.) scoped to a domain or dataset"""
+    __tablename__ = "governance_policies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # Scope (one of domain/dataset)
+    domain_id = Column(UUID(as_uuid=True), ForeignKey("data_domains.id", ondelete="CASCADE"), nullable=True, index=True)
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    # Policy details
+    policy_type = Column(String(100), nullable=False, index=True)  # retention, access, quality, privacy, etc.
+    policy_definition = Column(JSON, nullable=True)
+
+    # Status and dates
+    status = Column(Enum(GovernancePolicyStatus), default=GovernancePolicyStatus.DRAFT, nullable=False, index=True)
+    effective_date = Column(DateTime(timezone=True), nullable=True)
+    expiration_date = Column(DateTime(timezone=True), nullable=True)
+
+    # Audit
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(datetime.now().astimezone().tzinfo))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(datetime.now().astimezone().tzinfo))
+
+    # Relationships
+    domain = relationship("DataDomain", back_populates="policies")
+    dataset = relationship("Dataset", back_populates="policies")
+    created_by = relationship("User")
+
+    def __repr__(self):
+        return f"<GovernancePolicy {self.name}>"
 
 
 class QualityTarget(Base):

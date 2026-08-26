@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_permission
+from app.dependencies import get_current_user_from_token
+from app.core.rbac import require_permission
 from app.models.user import User
 from app.schemas.data_quality_rule import (
     DataQualityRuleCreate,
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/data-quality", tags=["Data Quality"])
 )
 async def create_rule(
     data: DataQualityRuleCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:manage")),
 ):
@@ -57,7 +58,7 @@ async def list_rules(
     status: str = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -89,7 +90,7 @@ async def list_rules(
 )
 async def get_rule(
     rule_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -114,7 +115,7 @@ async def get_rule(
 async def update_rule(
     rule_id: UUID,
     data: DataQualityRuleUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:manage")),
 ):
@@ -138,7 +139,7 @@ async def update_rule(
 )
 async def delete_rule(
     rule_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:manage")),
 ):
@@ -160,7 +161,7 @@ async def get_rule_results(
     rule_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -199,7 +200,7 @@ async def get_rule_results(
     summary="Get data quality metrics",
 )
 async def get_metrics(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -216,7 +217,7 @@ async def get_metrics(
 async def get_trend(
     days: int = Query(30, ge=1, le=365),
     dimension: str = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -231,7 +232,7 @@ async def get_trend(
 )
 async def get_dimension_trends(
     days: int = Query(30, ge=1, le=365),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -246,7 +247,7 @@ async def get_dimension_trends(
 )
 async def get_rule_performance(
     limit: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -261,7 +262,7 @@ async def get_rule_performance(
 )
 async def get_failing_rules(
     limit: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -275,7 +276,7 @@ async def get_failing_rules(
     summary="Get overall health score",
 )
 async def get_health_score(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):

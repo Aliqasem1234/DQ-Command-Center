@@ -16,9 +16,9 @@ from uuid import UUID
 from sqlalchemy import select, func, desc, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.data_quality_rule import DataQualityResult, DataQualityDimension, RuleStatus
+from app.models.data_quality_rule import DataQualityRule, DataQualityResult, DataQualityDimension, RuleStatus
 from app.models.data_hierarchy import (
-    Dataset, DataQualityRule, QualityIssue, RuleEffectiveness,
+    Dataset, QualityIssue, RuleEffectiveness,
     QualityCheckRun, IssueSeverity, IssueStatus
 )
 

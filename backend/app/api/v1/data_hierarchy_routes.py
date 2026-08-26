@@ -46,20 +46,18 @@ from typing import Optional
 from app.database import get_db
 from app.schemas.data_hierarchy import (
     DataDomainResponse, DataDomainCreate, DataDomainUpdate,
-    DatasetResponse, DatasetCreate, DatasetUpdate,
+    DatasetResponse, DatasetCreate,
     DataElementResponse, DataElementCreate,
-    QualityRuleResponse, QualityRuleCreate,
-    QualityIssueResponse, QualityIssueCreate,
-    GovernanceAssignmentResponse, GovernanceAssignmentCreate,
     HealthScoreResponse, DashboardHealthResponse,
-    SearchResultsResponse, PaginationParams,
+    SearchResultsResponse,
 )
 from app.services.data_hierarchy_service import DataHierarchyService
 from app.services.quality_analytics_service import QualityAnalyticsService
-from app.core.security import get_current_user
+from app.dependencies import get_current_user_from_token
+from app.core.rbac import require_permission
 from app.models.user import User
 
-router = APIRouter(prefix="/api/v1", tags=["data-hierarchy"])
+router = APIRouter(tags=["data-hierarchy"])
 
 
 # ===== DOMAIN ENDPOINTS =====
@@ -69,7 +67,8 @@ async def list_domains(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> list:
     """List all data domains"""
     domains, _ = await DataHierarchyService.list_domains(db, page, page_size)
@@ -80,7 +79,8 @@ async def list_domains(
 async def create_domain(
     request: DataDomainCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:manage")),
 ) -> DataDomainResponse:
     """Create a new data domain"""
     domain = await DataHierarchyService.create_domain(
@@ -98,7 +98,8 @@ async def create_domain(
 async def get_domain(
     domain_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> DataDomainResponse:
     """Get a specific domain"""
     domain = await DataHierarchyService.get_domain(db, domain_id)
@@ -112,7 +113,8 @@ async def update_domain(
     domain_id: UUID,
     request: DataDomainUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:manage")),
 ) -> DataDomainResponse:
     """Update a domain"""
     domain = await DataHierarchyService.get_domain(db, domain_id)
@@ -141,11 +143,12 @@ async def list_datasets(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> list:
-    """List all datasets"""
-    # TODO: Implement full list (across all domains)
-    return []
+    """List all datasets across all domains"""
+    datasets, _ = await DataHierarchyService.list_all_datasets(db, page, page_size)
+    return datasets
 
 
 @router.get("/domains/{domain_id}/datasets", response_model=list[DatasetResponse])
@@ -154,7 +157,8 @@ async def list_domain_datasets(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> list:
     """List datasets in a domain"""
     datasets, _ = await DataHierarchyService.list_datasets_in_domain(
@@ -167,7 +171,8 @@ async def list_domain_datasets(
 async def create_dataset(
     request: DatasetCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:manage")),
 ) -> DatasetResponse:
     """Create a new dataset"""
     dataset = await DataHierarchyService.create_dataset(
@@ -192,7 +197,8 @@ async def create_dataset(
 async def get_dataset(
     dataset_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> DatasetResponse:
     """Get a specific dataset"""
     dataset = await DataHierarchyService.get_dataset(db, dataset_id)
@@ -209,7 +215,8 @@ async def list_elements(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> list:
     """List elements in a dataset"""
     elements, _ = await DataHierarchyService.list_elements_in_dataset(
@@ -222,7 +229,8 @@ async def list_elements(
 async def create_element(
     request: DataElementCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:manage")),
 ) -> DataElementResponse:
     """Create a new data element"""
     element = await DataHierarchyService.create_element(
@@ -249,9 +257,10 @@ async def create_element(
 @router.get("/search", response_model=SearchResultsResponse)
 async def search(
     q: str = Query(..., min_length=2),
-    search_type: str = Query("all", regex="^(all|domain|dataset|element)$"),
+    search_type: str = Query("all", pattern="^(all|domain|dataset|element)$"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:view")),
 ) -> SearchResultsResponse:
     """Search across data hierarchy"""
     results = await DataHierarchyService.search_hierarchy(db, q, search_type)
@@ -272,7 +281,8 @@ async def get_health_score(
     dataset_id: Optional[UUID] = Query(None),
     days: int = Query(30, ge=1, le=90),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("data_quality:view")),
 ) -> HealthScoreResponse:
     """Get overall health score"""
     health = await QualityAnalyticsService.calculate_overall_health_score(
@@ -286,7 +296,8 @@ async def get_dashboard_summary(
     dataset_id: Optional[UUID] = Query(None),
     days: int = Query(30, ge=1, le=90),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("data_quality:view")),
 ) -> DashboardHealthResponse:
     """Get complete dashboard summary"""
     health = await QualityAnalyticsService.calculate_overall_health_score(
@@ -310,36 +321,5 @@ async def get_dashboard_summary(
     )
 
 
-# ===== GOVERNANCE ENDPOINTS =====
-
-@router.get("/governance", response_model=list[GovernanceAssignmentResponse])
-async def list_governance(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> list:
-    """List all governance assignments"""
-    # TODO: Implement with pagination
-    return []
-
-
-@router.post("/governance", response_model=GovernanceAssignmentResponse, status_code=201)
-async def create_governance_assignment(
-    request: GovernanceAssignmentCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> GovernanceAssignmentResponse:
-    """Assign a governance role"""
-    governance = await DataHierarchyService.assign_governance_role(
-        db=db,
-        domain_id=request.domain_id,
-        dataset_id=request.dataset_id,
-        element_id=request.element_id,
-        role=request.role,
-        user_id=request.user_id,
-        department_id=request.department_id,
-        responsibility_description=request.responsibility_description,
-        current_user_id=current_user.id,
-    )
-    return governance
+# Governance role assignments (create/list/update/revoke) live under
+# /api/v1/governance/assignments — see app.api.v1.governance.

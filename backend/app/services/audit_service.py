@@ -95,6 +95,7 @@ def _audit_log_to_response(log: AuditLog) -> AuditLogResponse:
         action=log.action,
         entity_type=log.entity_type,
         entity_id=log.entity_id,
+        entity_name=log.entity_name,
         old_values=log.old_values,
         new_values=log.new_values,
         ip_address=log.ip_address,

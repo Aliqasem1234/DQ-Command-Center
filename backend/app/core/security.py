@@ -8,10 +8,12 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.token import RefreshToken
 from app.models.user import User
+from app.models.role import UserRole, Role, RolePermission
 
 pwd_context = CryptContext(
     schemes=["argon2"],
@@ -80,7 +82,16 @@ async def get_current_user(db: AsyncSession, token: str) -> Optional[User]:
         return None
 
     try:
-        result = await db.execute(select(User).where(User.id == UUID(user_id)))
+        result = await db.execute(
+            select(User)
+            .options(
+                selectinload(User.roles)
+                .selectinload(UserRole.role)
+                .selectinload(Role.role_permissions)
+                .selectinload(RolePermission.permission)
+            )
+            .where(User.id == UUID(user_id))
+        )
         return result.scalar_one_or_none()
     except (ValueError, Exception):
         return None

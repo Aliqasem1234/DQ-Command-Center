@@ -9,11 +9,17 @@ sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
 from app.database import Base
 from app.models import *  # noqa: F401, F403
+from app.config import settings
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Always use the application's own configuration (env vars / .env), never a
+# value hardcoded in alembic.ini, so migrations use the same credentials as
+# the running app.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
 
 target_metadata = Base.metadata
 

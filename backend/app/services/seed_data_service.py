@@ -22,11 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.models.department import Department
 from app.models.data_hierarchy import (
-    DataDomain, Dataset, DataElement, DataElementMetadata, DataQualityRule,
+    DataDomain, Dataset, DataElement, DataElementMetadata,
     DataGovernance, QualityTarget, QualityCheckRun, QualityIssue,
     DatasetType, ClassificationLevel, GovernanceRole, IssueSeverity, IssueStatus
 )
-from app.models.data_quality_rule import DataQualityDimension, RuleSeverity, RuleStatus, RuleTargetLevel
+from app.models.data_quality_rule import (
+    DataQualityRule, DataQualityDimension, RuleSeverity, RuleStatus, RuleTargetLevel
+)
 from app.services.data_hierarchy_service import DataHierarchyService
 
 logger = logging.getLogger(__name__)

@@ -13,6 +13,7 @@ class AuditLog(Base):
     action = Column(String(100), nullable=False)
     entity_type = Column(String(100), nullable=False)
     entity_id = Column(String(255), nullable=True)
+    entity_name = Column(String(255), nullable=True)
     old_values = Column(JSON, nullable=True)
     new_values = Column(JSON, nullable=True)
     ip_address = Column(String(45), nullable=True)

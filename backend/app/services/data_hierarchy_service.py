@@ -173,6 +173,22 @@ class DataHierarchyService:
         result = await db.execute(query)
         return result.scalars().all(), total
 
+    @staticmethod
+    async def list_all_datasets(
+        db: AsyncSession,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> tuple[list[Dataset], int]:
+        """List datasets across all domains"""
+        query = select(Dataset).order_by(desc(Dataset.created_at))
+
+        count_result = await db.execute(select(func.count(Dataset.id)))
+        total = count_result.scalar() or 0
+
+        query = query.offset((page - 1) * page_size).limit(page_size)
+        result = await db.execute(query)
+        return result.scalars().all(), total
+
     # ===== DATA ELEMENT MANAGEMENT =====
 
     @staticmethod

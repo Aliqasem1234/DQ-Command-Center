@@ -14,6 +14,7 @@ from app.database import async_session_factory
 from app.models.user import User
 from app.models.role import Role, UserRole, Permission, RolePermission
 from app.models.department import Department
+from app.models.data_hierarchy import DataDomain
 from app.core.security import hash_password
 from app.config import settings
 
@@ -220,37 +221,52 @@ async def seed_demo_data():
             admin = result.scalar_one_or_none()
             
             if admin:
-                # Create demo users
+                # Create demo users (idempotent - skip any that already exist)
+                now = datetime.now(timezone.utc)
                 demo_users = []
                 for i, name in enumerate(["Alice Chen", "Bob Johnson", "Carol Davis"]):
+                    email = f"demo{i+1}@dqcommandcenter.io"
+                    existing = await db.execute(select(User).where(User.email == email))
+                    existing_user = existing.scalar_one_or_none()
+                    if existing_user:
+                        demo_users.append(existing_user)
+                        continue
+
                     user = User(
-                        email=f"demo{i+1}@dqcenter.local",
+                        email=email,
                         username=f"demo{i+1}",
                         password_hash=hash_password("[REDACTED-DEV-CREDENTIAL]"),
                         full_name=name,
                         is_active=True,
                         is_verified=True,
                         department="Demo",
+                        created_at=now,
+                        updated_at=now,
                     )
                     db.add(user)
                     demo_users.append(user)
-                
-                await db.flush()
-                
+
+                await db.commit()
+
                 # Get departments
                 result = await db.execute(select(Department).limit(4))
                 demo_departments = result.scalars().all()
-                
-                # Seed quality data
-                await SeedDataService.populate_demo_data(
-                    db=db,
-                    admin_user=admin,
-                    demo_users=demo_users,
-                    demo_departments=demo_departments,
+
+                # Seed quality data (idempotent - skip if already populated)
+                existing_domain = await db.execute(
+                    select(DataDomain).where(DataDomain.name == "Finance")
                 )
-                
-                await db.commit()
-                logger.info("Demo data seeded successfully")
+                if existing_domain.scalar_one_or_none() is None:
+                    await SeedDataService.populate_demo_data(
+                        db=db,
+                        admin_user=admin,
+                        demo_users=demo_users,
+                        demo_departments=demo_departments,
+                    )
+                    await db.commit()
+                    logger.info("Demo data seeded successfully")
+                else:
+                    logger.info("Demo data already present, skipping")
 
         except Exception as e:
             await db.rollback()

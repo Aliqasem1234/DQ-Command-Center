@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user_from_token, get_current_user, require_permission
+from app.dependencies import get_current_user_from_token
+from app.core.rbac import require_permission
 from app.models.user import User
 from app.schemas.dashboard import DashboardResponse
 from app.services import dashboard_service
@@ -28,7 +29,7 @@ async def get_dashboard(
     summary="Get enhanced dashboard with DQ metrics",
 )
 async def get_enhanced_dashboard(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
 ):
     """Get complete dashboard with data quality and governance metrics"""
@@ -40,7 +41,7 @@ async def get_enhanced_dashboard(
     summary="Get data quality dashboard section",
 )
 async def get_dq_section(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -53,7 +54,7 @@ async def get_dq_section(
     summary="Get governance dashboard section",
 )
 async def get_governance_section(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:view")),
 ):

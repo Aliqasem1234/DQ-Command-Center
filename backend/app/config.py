@@ -1,6 +1,12 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import List
-import os
+
+INSECURE_DEFAULTS = {
+    "change-me",
+    "dev-secret-key-change-in-production",
+    "",
+}
 
 
 class Settings(BaseSettings):
@@ -20,10 +26,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Super Admin
-    SUPER_ADMIN_EMAIL: str = "admin@dqcommandcenter.com"
-    SUPER_ADMIN_PASSWORD: str = "[REDACTED-DEV-CREDENTIAL]"
-    SUPER_ADMIN_NAME: str = "Super Admin"
+    # Admin initialization (set via environment only; empty means no auto-created admin)
+    INIT_ADMIN_EMAIL: str = ""
+    INIT_ADMIN_PASSWORD: str = ""
+    INIT_ADMIN_NAME: str = "Administrator"
 
     # Security
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:80,http://localhost"
@@ -42,6 +48,23 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def _reject_insecure_production_secrets(self) -> "Settings":
+        if self.ENVIRONMENT == "production":
+            if self.SECRET_KEY in INSECURE_DEFAULTS or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    "SECRET_KEY must be set to a random value of at least 32 characters in production."
+                )
+            if self.JWT_SECRET_KEY in INSECURE_DEFAULTS or len(self.JWT_SECRET_KEY) < 32:
+                raise ValueError(
+                    "JWT_SECRET_KEY must be set to a random value of at least 32 characters in production."
+                )
+            if "[REDACTED-DEV-CREDENTIAL]" in self.DATABASE_URL:
+                raise ValueError(
+                    "DATABASE_URL still contains the development default password in production."
+                )
+        return self
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

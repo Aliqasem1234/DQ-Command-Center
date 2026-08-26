@@ -90,36 +90,41 @@ class EnhancedDashboardService:
     async def get_governance_dashboard_section(db: AsyncSession) -> dict:
         """Get governance section for dashboard"""
         try:
-            from app.models.data_governance import DataAsset, GovernancePolicy
+            from app.models.data_hierarchy import Dataset, GovernancePolicy, DataGovernance, ClassificationLevel
 
-            # Get asset statistics
-            assets_result = await db.execute(select(func.count(DataAsset.id)))
-            total_assets = assets_result.scalar() or 0
+            total_datasets_result = await db.execute(select(func.count(Dataset.id)))
+            total_datasets = total_datasets_result.scalar() or 0
 
             classified_result = await db.execute(
-                select(func.count(DataAsset.id)).where(DataAsset.classification.isnot(None))
+                select(func.count(Dataset.id)).where(Dataset.classification != ClassificationLevel.INTERNAL)
             )
-            classified_assets = classified_result.scalar() or 0
+            classified_datasets = classified_result.scalar() or 0
 
-            # Get policy statistics
             policies_result = await db.execute(select(func.count(GovernancePolicy.id)))
             total_policies = policies_result.scalar() or 0
 
+            assignments_result = await db.execute(
+                select(func.count(DataGovernance.id)).where(DataGovernance.is_active.is_(True))
+            )
+            active_assignments = assignments_result.scalar() or 0
+
             return {
-                "total_data_assets": total_assets,
-                "classified_assets": classified_assets,
-                "classification_coverage": (classified_assets / total_assets * 100) if total_assets > 0 else 0,
+                "total_datasets": total_datasets,
+                "classified_datasets": classified_datasets,
+                "classification_coverage": (classified_datasets / total_datasets * 100) if total_datasets > 0 else 0,
                 "total_governance_policies": total_policies,
+                "active_governance_assignments": active_assignments,
                 "last_updated": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
             logger.error(f"Error getting governance dashboard section: {str(e)}")
             return {
-                "total_data_assets": 0,
-                "classified_assets": 0,
+                "total_datasets": 0,
+                "classified_datasets": 0,
                 "classification_coverage": 0,
                 "total_governance_policies": 0,
+                "active_governance_assignments": 0,
                 "last_updated": datetime.now(timezone.utc).isoformat(),
             }
 

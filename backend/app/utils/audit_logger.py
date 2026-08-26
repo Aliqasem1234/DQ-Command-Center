@@ -14,6 +14,7 @@ async def create_audit_log(
     action: str,
     entity_type: str,
     entity_id: Optional[str] = None,
+    entity_name: Optional[str] = None,
     old_values: Optional[dict] = None,
     new_values: Optional[dict] = None,
     ip_address: Optional[str] = None,
@@ -24,6 +25,7 @@ async def create_audit_log(
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,
+        entity_name=entity_name,
         old_values=old_values,
         new_values=new_values,
         ip_address=ip_address,
@@ -34,3 +36,7 @@ async def create_audit_log(
     await db.flush()
     logger.debug(f"Audit log: {action} on {entity_type} {entity_id}")
     return log
+
+
+# Alias kept for call sites that historically imported this name.
+log_audit_action = create_audit_log

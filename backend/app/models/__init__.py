@@ -8,9 +8,10 @@ from app.models.data_quality_rule import (
     DataQualityRule, DataQualityResult, DataQualityDimension, RuleSeverity, RuleStatus, RuleTargetLevel
 )
 from app.models.data_hierarchy import (
-    DataDomain, Dataset, DataElement, DataElementMetadata, DataLineage, DataGovernance,
+    DataDomain, Dataset, DataElement, DataElementMetadata, DataLineage, DataGovernance, GovernancePolicy,
     QualityTarget, RuleEffectiveness, QualityCheckRun, QualityIssue,
-    DatasetType, ClassificationLevel, GovernanceRole, TrendDirection, IssueSeverity, IssueStatus, TargetStatus
+    DatasetType, ClassificationLevel, GovernanceRole, GovernancePolicyStatus,
+    TrendDirection, IssueSeverity, IssueStatus, TargetStatus
 )
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "QualityIssue",
     # Governance
     "DataGovernance",
+    "GovernancePolicy",
     # Enums
     "DataQualityDimension",
     "RuleSeverity",
@@ -52,6 +54,7 @@ __all__ = [
     "DatasetType",
     "ClassificationLevel",
     "GovernanceRole",
+    "GovernancePolicyStatus",
     "TrendDirection",
     "IssueSeverity",
     "IssueStatus",

@@ -3,7 +3,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_permission
+from app.dependencies import get_current_user_from_token
+from app.core.rbac import require_permission
 from app.models.user import User
 from app.services.results_reporting_service import ResultsReportingService
 
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/results", tags=["Results Reporting"])
 async def get_statistics(
     rule_id: UUID,
     days: int = Query(30, ge=1, le=365),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -27,7 +28,7 @@ async def get_statistics(
 async def get_error_summary(
     rule_id: UUID = Query(None),
     limit: int = Query(10, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -40,7 +41,7 @@ async def get_error_summary(
 async def get_timeline(
     rule_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -53,7 +54,7 @@ async def get_timeline(
 async def analyze_failures(
     rule_id: UUID,
     days: int = Query(30, ge=1, le=365),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
@@ -65,7 +66,7 @@ async def analyze_failures(
 @router.get("/quality-report", summary="Generate quality report")
 async def generate_report(
     days: int = Query(30, ge=1, le=365),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_token),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_quality:view")),
 ):
