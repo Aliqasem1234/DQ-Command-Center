@@ -91,7 +91,7 @@ async def create_department(
     await db.flush()
 
     await create_audit_log(
-        db, actor_user_id, "CREATE", "department", str(dept.id),
+        db, actor_user_id, "CREATE", "department", str(dept.id), entity_name=data.name,
         new_values={"name": data.name, "description": data.description},
         ip_address=ip_address, user_agent=user_agent,
     )
@@ -130,7 +130,7 @@ async def update_department(
 
     await db.flush()
     await create_audit_log(
-        db, actor_user_id, "UPDATE", "department", str(dept.id),
+        db, actor_user_id, "UPDATE", "department", str(dept.id), entity_name=dept.name,
         old_values=old_values,
         new_values={"name": dept.name, "description": dept.description, "is_active": dept.is_active},
         ip_address=ip_address, user_agent=user_agent,
@@ -167,7 +167,7 @@ async def delete_department(
         user.department_id = None
 
     await create_audit_log(
-        db, actor_user_id, "DELETE", "department", str(dept.id),
+        db, actor_user_id, "DELETE", "department", str(dept.id), entity_name=dept.name,
         old_values={"name": dept.name},
         ip_address=ip_address, user_agent=user_agent,
     )

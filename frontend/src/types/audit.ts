@@ -5,6 +5,7 @@ export interface AuditLog {
   action: string;
   entity_type: string;
   entity_id: string;
+  entity_name: string | null;
   old_values: Record<string, unknown> | null;
   new_values: Record<string, unknown> | null;
   ip_address: string | null;

@@ -90,7 +90,7 @@ async def create_role(
         await db.flush()
 
     await create_audit_log(
-        db, actor_user_id, "CREATE", "role", str(role.id),
+        db, actor_user_id, "CREATE", "role", str(role.id), entity_name=data.name,
         new_values={"name": data.name, "permissions": data.permission_ids},
         ip_address=ip_address, user_agent=user_agent,
     )
@@ -130,7 +130,7 @@ async def update_role(
 
     await db.flush()
     await create_audit_log(
-        db, actor_user_id, "UPDATE", "role", str(role.id),
+        db, actor_user_id, "UPDATE", "role", str(role.id), entity_name=role.name,
         old_values=old_values, new_values={"name": role.name, "description": role.description},
         ip_address=ip_address, user_agent=user_agent,
     )
@@ -155,7 +155,7 @@ async def delete_role(
         raise ValueError("Cannot delete system roles")
 
     await create_audit_log(
-        db, actor_user_id, "DELETE", "role", str(role.id),
+        db, actor_user_id, "DELETE", "role", str(role.id), entity_name=role.name,
         old_values={"name": role.name},
         ip_address=ip_address, user_agent=user_agent,
     )
@@ -194,7 +194,7 @@ async def update_role_permissions(
 
     await db.flush()
     await create_audit_log(
-        db, actor_user_id, "UPDATE_PERMISSIONS", "role", str(role.id),
+        db, actor_user_id, "UPDATE_PERMISSIONS", "role", str(role.id), entity_name=role.name,
         new_values={"permission_ids": data.permission_ids},
         ip_address=ip_address, user_agent=user_agent,
     )

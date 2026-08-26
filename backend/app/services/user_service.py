@@ -136,7 +136,7 @@ async def admin_create_user(
         await db.flush()
 
     await create_audit_log(
-        db, actor_user_id, "CREATE", "user", str(user.id),
+        db, actor_user_id, "CREATE", "user", str(user.id), entity_name=data.email,
         new_values={"email": data.email, "username": data.username, "full_name": data.full_name},
         ip_address=ip_address, user_agent=user_agent,
     )
@@ -197,7 +197,7 @@ async def admin_update_user(
 
     await db.flush()
     await create_audit_log(
-        db, actor_user_id, "UPDATE", "user", str(user.id),
+        db, actor_user_id, "UPDATE", "user", str(user.id), entity_name=user.email,
         old_values=old_values,
         new_values={"email": user.email, "full_name": user.full_name, "is_active": user.is_active},
         ip_address=ip_address, user_agent=user_agent,
@@ -223,7 +223,7 @@ async def admin_delete_user(
     user.updated_at = datetime.now(timezone.utc)
 
     await create_audit_log(
-        db, actor_user_id, "DEACTIVATE", "user", str(user.id),
+        db, actor_user_id, "DEACTIVATE", "user", str(user.id), entity_name=user.email,
         old_values={"is_active": True},
         new_values={"is_active": False},
         ip_address=ip_address, user_agent=user_agent,
@@ -246,9 +246,13 @@ async def assign_user_roles(
         return None
 
     existing_roles = await db.execute(
-        select(UserRole).where(UserRole.user_id == user_id)
+        select(UserRole)
+        .options(selectinload(UserRole.role))
+        .where(UserRole.user_id == user_id)
     )
-    for ur in existing_roles.scalars().all():
+    existing_role_rows = existing_roles.scalars().all()
+    existing_role_names = [ur.role.name for ur in existing_role_rows if ur.role]
+    for ur in existing_role_rows:
         await db.delete(ur)
 
     if data.roles:
@@ -262,8 +266,8 @@ async def assign_user_roles(
 
     await db.flush()
     await create_audit_log(
-        db, actor_user_id, "UPDATE_ROLES", "user", str(user.id),
-        old_values={"roles": [r.role.name for r in existing_roles.scalars().all()] if False else None},
+        db, actor_user_id, "UPDATE_ROLES", "user", str(user.id), entity_name=user.email,
+        old_values={"roles": existing_role_names},
         new_values={"roles": data.roles},
         ip_address=ip_address, user_agent=user_agent,
     )
