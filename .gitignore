@@ -1,0 +1,102 @@
+# Environment and Secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env/
+.venv.bak/
+venv.bak/
+
+# Python testing
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+
+# Node/Frontend
+node_modules/
+npm-debug.log
+npm-debug.log.*
+yarn-error.log
+yarn-error.log.*
+.next/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+postgres_data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+docker-compose.override.yml
+.docker/
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# IDE
+*.code-workspace
+
+# Secrets/Private
+secrets.json
+.ssh/
+*.key
+*.pem
+private/
+
+# Build artifacts
+*.tar.gz
+*.zip
+!dq-command-center-*.zip
