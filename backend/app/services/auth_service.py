@@ -154,14 +154,14 @@ async def logout_user(db: AsyncSession, refresh_token: str) -> bool:
     return success
 
 
-async def forgot_password(db: AsyncSession, email: str) -> bool:
+async def forgot_password(db: AsyncSession, email: str) -> Optional[str]:
     now = datetime.now(timezone.utc)
 
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
     if user is None:
-        return True  # Don't reveal if email exists
+        return None  # Don't reveal if email exists
 
     # Revoke old reset tokens
     await db.execute(
@@ -184,7 +184,7 @@ async def forgot_password(db: AsyncSession, email: str) -> bool:
     await db.commit()
 
     await email_service.send_password_reset_email(email, token_str)
-    return True
+    return token_str
 
 
 async def reset_password(db: AsyncSession, token: str, new_password: str) -> bool:

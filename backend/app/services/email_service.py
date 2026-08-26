@@ -1,5 +1,10 @@
+import asyncio
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Optional
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,21 +22,40 @@ class EmailService:
         html_body: Optional[str] = None,
     ) -> bool:
         if self.is_mock:
-            logger.info("=" * 60)
-            logger.info(f"MOCK EMAIL TO: {to_email}")
-            logger.info(f"SUBJECT: {subject}")
-            logger.info(f"BODY: {body[:500]}..." if len(body) > 500 else f"BODY: {body}")
-            logger.info("=" * 60)
+            # Never log email body/links here - in mock mode this is the
+            # only place a password-reset or email-verification token
+            # would otherwise end up in plaintext in application logs.
+            logger.info(f"MOCK EMAIL: would send '{subject}' to {to_email} (SMTP not configured)")
             return True
 
         try:
-            # Real SMTP implementation would go here
-            # For production, configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD
-            logger.info(f"Sending real email to {to_email} via SMTP")
+            await asyncio.to_thread(self._send_smtp, to_email, subject, body, html_body)
+            logger.info(f"Email sent to {to_email}")
             return True
         except Exception as e:
-            logger.error(f"Failed to send email: {e}")
+            logger.error(f"Failed to send email to {to_email}: {e}")
             return False
+
+    def _send_smtp(
+        self,
+        to_email: str,
+        subject: str,
+        body: str,
+        html_body: Optional[str],
+    ) -> None:
+        message = MIMEMultipart("alternative")
+        message["Subject"] = subject
+        message["From"] = settings.SMTP_FROM_EMAIL
+        message["To"] = to_email
+        message.attach(MIMEText(body, "plain"))
+        if html_body:
+            message.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
+            if settings.SMTP_USE_TLS:
+                server.starttls()
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.sendmail(settings.SMTP_FROM_EMAIL, [to_email], message.as_string())
 
     async def send_verification_email(self, to_email: str, token: str) -> bool:
         verify_url = f"{settings.CORS_ORIGINS.split(',')[0].strip()}/verify-email?token={token}"

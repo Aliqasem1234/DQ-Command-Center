@@ -20,6 +20,7 @@ from app.schemas.auth import (
 )
 from app.services import auth_service
 from app.config import settings
+from app.core.limiter import limiter
 
 router = APIRouter()
 
@@ -36,6 +37,7 @@ def _get_client_info(request: Request):
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
+@limiter.limit("5/minute")
 async def register(
     request: Request,
     body: RegisterRequest,
@@ -62,6 +64,7 @@ async def register(
     response_model=LoginResponse,
     summary="Login with email and password",
 )
+@limiter.limit("10/minute")
 async def login(
     request: Request,
     body: LoginRequest,
@@ -126,14 +129,16 @@ async def logout(
     response_model=MessageResponse,
     summary="Request password reset email",
 )
+@limiter.limit("3/minute")
 async def forgot_password(
     request: Request,
     body: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    await auth_service.forgot_password(db, body.email)
+    token = await auth_service.forgot_password(db, body.email)
     return MessageResponse(
-        message="If the email exists, a password reset link has been sent."
+        message="If the email exists, a password reset link has been sent.",
+        detail=f"Reset token: {token}" if settings.ENVIRONMENT == "development" and token else None,
     )
 
 

@@ -5,14 +5,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.api.v1.router import router as v1_router
 from app.middleware.security import SecurityHeadersMiddleware
+from app.core.limiter import limiter
 from app.core.seed_secure import secure_initialize
 
 logging.basicConfig(
@@ -49,16 +49,19 @@ app = FastAPI(
     - All protected endpoints require `Authorization: Bearer <token>` header
     
     ## Rate Limiting
-    - Auth endpoints have rate limiting to prevent brute force attacks (enforced by nginx)
+    - Auth endpoints have rate limiting to prevent brute force attacks
+      (enforced by this API directly, and again at the nginx layer)
     - Login: 10 requests/minute
     - Register: 5 requests/minute
     - Forgot password: 3 requests/minute
     - General API: 120 requests/minute (safety net)
     """,
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    # API docs expose the full route/schema surface - only serve them
+    # outside production.
+    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT != "production" else None,
     lifespan=lifespan,
 )
 
@@ -75,8 +78,8 @@ app.add_middleware(
 # Security headers
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+# Rate limiter (shared instance in app.core.limiter so route modules can
+# apply per-endpoint limits via @limiter.limit(...))
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
