@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = "noreply@dqcommandcenter.com"
     SMTP_USE_TLS: bool = True
 
+    # File uploads (dataset ingestion)
+    UPLOAD_DIR: str = "uploads"
+    MAX_UPLOAD_SIZE_MB: int = 50
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]

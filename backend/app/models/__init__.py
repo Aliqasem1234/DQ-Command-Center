@@ -9,9 +9,9 @@ from app.models.data_quality_rule import (
 )
 from app.models.data_hierarchy import (
     DataDomain, Dataset, DataElement, DataElementMetadata, DataLineage, DataGovernance, GovernancePolicy,
-    QualityTarget, RuleEffectiveness, QualityCheckRun, QualityIssue,
+    QualityTarget, RuleEffectiveness, QualityCheckRun, QualityIssue, DatasetVersion,
     DatasetType, ClassificationLevel, GovernanceRole, GovernancePolicyStatus,
-    TrendDirection, IssueSeverity, IssueStatus, TargetStatus
+    TrendDirection, IssueSeverity, IssueStatus, TargetStatus, DatasetVersionStatus
 )
 
 __all__ = [
@@ -36,6 +36,7 @@ __all__ = [
     "DataElement",
     "DataElementMetadata",
     "DataLineage",
+    "DatasetVersion",
     # Quality
     "DataQualityRule",
     "DataQualityResult",
@@ -59,4 +60,5 @@ __all__ = [
     "IssueSeverity",
     "IssueStatus",
     "TargetStatus",
+    "DatasetVersionStatus",
 ]

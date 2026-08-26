@@ -17,6 +17,8 @@ import { NotFoundPage } from '../pages/errors/NotFoundPage';
 import { ForbiddenPage } from '../pages/errors/ForbiddenPage';
 import DataQualityRulesPage from '../pages/dataQuality/DataQualityRulesPage';
 import DataQualityMonitoringPage from '../pages/dataQuality/DataQualityMonitoringPage';
+import { DatasetsListPage } from '../pages/datasets/DatasetsListPage';
+import { DatasetDetailPage } from '../pages/datasets/DatasetDetailPage';
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +42,8 @@ export const router = createBrowserRouter([
     ),
     children: [
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'datasets', element: <DatasetsListPage /> },
+      { path: 'datasets/:datasetId', element: <DatasetDetailPage /> },
       { path: 'departments', element: <DepartmentListPage /> },
       { path: 'users', element: <UserListPage /> },
       { path: 'roles', element: <RoleListPage /> },

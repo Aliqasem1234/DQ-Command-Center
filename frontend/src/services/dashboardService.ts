@@ -14,9 +14,9 @@ export const dashboardService = {
     return response.data;
   },
 
-  async getOpenIssues(limit = 10): Promise<QualityIssueSummary[]> {
+  async getOpenIssues(limit = 10, datasetId?: string): Promise<QualityIssueSummary[]> {
     const response = await api.get<QualityIssueSummary[]>('/v1/quality-issues/open', {
-      params: { limit },
+      params: { limit, ...(datasetId ? { dataset_id: datasetId } : {}) },
     });
     return response.data;
   },

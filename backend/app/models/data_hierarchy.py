@@ -79,6 +79,17 @@ class GovernancePolicyStatus(str, enum.Enum):
     RETIRED = "retired"
 
 
+class DatasetVersionStatus(str, enum.Enum):
+    """Lifecycle status of a single uploaded/derived file version"""
+    UPLOADED = "uploaded"
+    PROFILING = "profiling"
+    PROFILED = "profiled"
+    SCANNING = "scanning"
+    SCANNED = "scanned"
+    CLEANING = "cleaning"
+    ERROR = "error"
+
+
 # Core Hierarchy Models
 
 class DataDomain(Base):
@@ -158,6 +169,10 @@ class Dataset(Base):
     governance = relationship("DataGovernance", back_populates="dataset", cascade="all, delete-orphan")
     policies = relationship("GovernancePolicy", back_populates="dataset", cascade="all, delete-orphan")
     quality_targets = relationship("QualityTarget", back_populates="dataset")
+    versions = relationship(
+        "DatasetVersion", back_populates="dataset", cascade="all, delete-orphan",
+        foreign_keys="DatasetVersion.dataset_id",
+    )
 
     __table_args__ = (
         UniqueConstraint("domain_id", "name", name="uq_dataset_domain_name"),
@@ -165,6 +180,58 @@ class Dataset(Base):
 
     def __repr__(self):
         return f"<Dataset {self.name}>"
+
+
+class DatasetVersion(Base):
+    """One uploaded or derived (cleaned) file for a dataset.
+
+    Versions form a chain: the original upload has source_version_id=None
+    and is_original=True; every cleaned version points at the version it
+    was produced from. The original file is never mutated - cleaning
+    always writes a new version and a new file.
+    """
+    __tablename__ = "dataset_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+
+    # File storage
+    file_path = Column(String(500), nullable=False)  # relative to UPLOAD_DIR
+    original_filename = Column(String(255), nullable=True)
+    file_format = Column(String(20), nullable=False)  # csv, xlsx
+    file_size_bytes = Column(Integer, nullable=True)
+
+    # Shape
+    row_count = Column(Integer, nullable=True)
+    column_count = Column(Integer, nullable=True)
+
+    # Lineage within the dataset's own version chain
+    is_original = Column(Boolean, nullable=False, default=False)
+    source_version_id = Column(UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL"), nullable=True)
+    cleaning_operations = Column(JSON, nullable=True)  # list of operations applied to produce this version
+    rows_changed = Column(Integer, nullable=True)
+    values_changed = Column(Integer, nullable=True)
+
+    # Status + latest known quality score for this version
+    status = Column(Enum(DatasetVersionStatus, native_enum=False), nullable=False, default=DatasetVersionStatus.UPLOADED, index=True)
+    quality_score = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(datetime.now().astimezone().tzinfo))
+
+    # Relationships
+    dataset = relationship("Dataset", back_populates="versions", foreign_keys=[dataset_id])
+    source_version = relationship("DatasetVersion", remote_side=[id], foreign_keys=[source_version_id])
+    created_by = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "version_number", name="uq_dataset_version_number"),
+    )
+
+    def __repr__(self):
+        return f"<DatasetVersion {self.dataset_id} v{self.version_number}>"
 
 
 class DataElement(Base):

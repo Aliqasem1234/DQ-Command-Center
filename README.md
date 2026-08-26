@@ -6,6 +6,14 @@ standard DQ dimensions (accuracy, completeness, consistency, validity,
 uniqueness, timeliness); track quality results and health scores; assign
 ownership/stewardship and governance policies; and audit every change.
 
+You can also upload a real CSV or Excel file to create a dataset directly:
+it's automatically profiled (real per-column stats, not estimates) and
+scanned for quality issues, cleaning operations can be previewed before
+they're applied, and every cleaning run produces a new, separately
+downloadable version rather than overwriting the original. See
+ARCHITECTURE.md's "Real data ingestion, profiling, and cleaning" section
+for how it works and its current boundaries.
+
 ## Stack
 
 - **Backend**: FastAPI (async), SQLAlchemy 2.0, PostgreSQL, Alembic migrations

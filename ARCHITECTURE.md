@@ -27,6 +27,70 @@ RBAC is separate from the data hierarchy: `User` → `UserRole` → `Role` →
 `RolePermission` → `Permission`, with a `is_super_admin` flag that
 unconditionally bypasses permission checks.
 
+## Real data ingestion, profiling, and cleaning
+
+A `Dataset` can now be backed by an actual uploaded file (CSV or Excel)
+rather than existing only as metadata. `DatasetVersion` (FK: `dataset_id`,
+self-referential FK: `source_version_id`) is an immutable chain: the
+original upload is version 1, and every cleaning operation produces a new
+version rather than mutating an existing one. Files live on disk under
+`UPLOAD_DIR/{dataset_id}/{uuid}.{ext}` (`app/services/file_storage_service.py`)
+- server-generated names only, never the client-supplied filename, with an
+extension allowlist and a streamed size cap.
+
+Pipeline (`app/api/v1/dataset_files.py`, mounted at `/api/v1/dataset-files`,
+kept separate from the pre-existing `/api/v1/datasets` metadata routes):
+
+```
+upload -> profile (app/services/profiling_service.py)
+       -> scan (app/services/quality_discovery_service.py)
+       -> clean/preview, clean (app/services/data_cleaning_service.py)
+       -> download
+```
+
+`profile_dataset_version` reads the file with pandas (`dtype=str`, so
+invalid values are never silently coerced away before they can be flagged),
+infers a logical type per column via regex/`pd.to_datetime` sampling with
+deliberately lenient thresholds (see the docstring on `infer_column_type` -
+a strict threshold would reclassify a "mostly dates, a few garbage values"
+column as plain text and defeat the point), and writes the result onto the
+existing `DataElement`/`DataElementMetadata` models - the same ones the
+Data Explorer pages already read, so profiled columns show up there with no
+separate code path.
+
+`scan_dataset_version` runs real checks (completeness/validity/uniqueness/
+consistency/duplicate rows) against the actual file content and reconciles
+findings against previously auto-discovered `DataQualityRule` rows (tagged
+`rule_definition={"source": "auto_discovered", "check_key": ...}`), so a
+re-scan updates existing issues and auto-resolves ones that no longer
+reproduce, rather than accumulating duplicates. Quality score is always
+`100 - (bad_cells / total_cells * 100)` computed from what was actually
+found - never randomized or estimated.
+
+Cleaning (`data_cleaning_service.py`) always operates on an in-memory copy
+and is preview-first: `POST .../clean/preview` returns a diff summary and
+up to 20 sample before/after rows without writing anything; only
+`POST .../clean` persists, and it does so as a brand-new `DatasetVersion`
+- the source file is never touched. `diff_sample` computes the changed-row
+mask with one vectorized comparison before building sample dicts, not a
+Python loop over every row - that distinction matters at scale (a row-by-row
+version of this took 6s on 20k rows; the vectorized version takes ~0.1s).
+
+A failed upload (e.g. a corrupt/unparseable file) is fully rolled back -
+the `Dataset`, `DatasetVersion`, and stored file are all removed rather than
+leaving a permanently broken entry behind - and reported as HTTP 422
+(`DatasetProcessingError`), distinct from the HTTP 409 used for a genuine
+conflict like a duplicate dataset name.
+
+**Explicitly out of scope for this capability, not stubbed:** direct DB
+source connections (Postgres/MySQL/SQL Server - file upload only),
+fuzzy/similarity-based duplicate detection (only exact-row dedup), a
+recommendations engine beyond the detected issues themselves, lineage/impact
+analysis for uploaded files, a remediation workflow status pipeline beyond
+the issue's open/resolved state, scheduled scans, and alerting. None of
+these have partial implementations or dead UI buttons - they simply don't
+exist yet.
+
 ## Backend layout
 
 ```

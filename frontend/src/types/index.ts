@@ -6,3 +6,4 @@ export * from './department';
 export * from './role';
 export * from './audit';
 export * from './dashboard';
+export * from './dataset';

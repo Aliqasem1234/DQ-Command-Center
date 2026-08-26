@@ -16,6 +16,7 @@ import {
   CheckCircle as QualityIcon,
   Eye as MonitorIcon,
   ChevronDown as ChevronDownIcon,
+  Database as DatasetsIcon,
 } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
@@ -25,6 +26,7 @@ const DRAWER_WIDTH = 260;
 
 const menuItems = [
   { path: '/dashboard', label: 'nav.dashboard', icon: DashboardIcon },
+  { path: '/datasets', label: 'nav.datasets', icon: DatasetsIcon },
   { path: '/data-quality/rules', label: 'dataQuality.rules', icon: QualityIcon },
   { path: '/data-quality/monitoring', label: 'dataQuality.monitoring', icon: MonitorIcon },
   { path: '/departments', label: 'nav.departments', icon: DeptIcon },
@@ -49,7 +51,8 @@ export function MainLayout() {
     document.documentElement.lang = lng;
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   const drawerContent = (
     <div className="flex flex-col h-full">
