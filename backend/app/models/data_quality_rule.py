@@ -45,7 +45,13 @@ class DataQualityRule(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    
+
+    # Free-text targeting (legacy, predates the dataset_id/element_id FKs below;
+    # still a real column in the database - kept for rules not yet linked
+    # to a specific hierarchy entry)
+    data_source = Column(String(255), nullable=True)
+    target_field = Column(String(255), nullable=True)
+
     # Hierarchy - rules target dataset or element
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=True)
     element_id = Column(UUID(as_uuid=True), ForeignKey("data_elements.id", ondelete="CASCADE"), nullable=True)

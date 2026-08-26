@@ -3,6 +3,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy import select, desc, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.data_quality_rule import (
     DataQualityRule,
@@ -72,7 +73,7 @@ class DataQualityService:
             )
 
             await db.commit()
-            return rule
+            return await DataQualityService.get_rule(db, rule.id)
 
         except Exception as e:
             await db.rollback()
@@ -89,7 +90,9 @@ class DataQualityService:
         """Update an existing data quality rule with audit logging"""
         try:
             result = await db.execute(
-                select(DataQualityRule).where(DataQualityRule.id == rule_id)
+                select(DataQualityRule)
+                .options(selectinload(DataQualityRule.owner), selectinload(DataQualityRule.created_by))
+                .where(DataQualityRule.id == rule_id)
             )
             rule = result.scalar_one_or_none()
 
@@ -189,7 +192,9 @@ class DataQualityService:
     async def get_rule(db: AsyncSession, rule_id: UUID) -> DataQualityRule:
         """Get a data quality rule by ID"""
         result = await db.execute(
-            select(DataQualityRule).where(DataQualityRule.id == rule_id)
+            select(DataQualityRule)
+            .options(selectinload(DataQualityRule.owner), selectinload(DataQualityRule.created_by))
+            .where(DataQualityRule.id == rule_id)
         )
         return result.scalar_one_or_none()
 
@@ -202,7 +207,9 @@ class DataQualityService:
         page_size: int = 10,
     ) -> tuple[list[DataQualityRule], int]:
         """List data quality rules with filtering"""
-        query = select(DataQualityRule)
+        query = select(DataQualityRule).options(
+            selectinload(DataQualityRule.owner), selectinload(DataQualityRule.created_by)
+        )
 
         if dimension:
             try:
@@ -219,7 +226,9 @@ class DataQualityService:
                 pass
 
         # Get total count
-        count_result = await db.execute(select(func.count(DataQualityRule.id)).select_from(query.statement.subquery()))
+        count_result = await db.execute(
+            select(func.count()).select_from(query.with_only_columns(DataQualityRule.id).subquery())
+        )
         total = count_result.scalar() or 0
 
         # Apply pagination and ordering

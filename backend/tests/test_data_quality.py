@@ -20,7 +20,7 @@ from app.services.data_quality_service import DataQualityService
 
 
 @pytest.mark.asyncio
-async def test_create_data_quality_rule(db_session, super_admin_user):
+async def test_create_data_quality_rule(test_session, seed_super_admin):
     """Test creating a data quality rule"""
     rule_data = DataQualityRuleCreate(
         name="Test Rule",
@@ -33,18 +33,18 @@ async def test_create_data_quality_rule(db_session, super_admin_user):
         target_field="test_field",
     )
 
-    rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
     assert rule is not None
     assert rule.name == "Test Rule"
     assert rule.dimension == DataQualityDimension.ACCURACY
     assert rule.rule_type == "format_validation"
     assert rule.severity == RuleSeverity.HIGH
-    assert rule.created_by_id == super_admin_user.id
+    assert rule.created_by_id == seed_super_admin.id
 
 
 @pytest.mark.asyncio
-async def test_get_data_quality_rule(db_session, super_admin_user):
+async def test_get_data_quality_rule(test_session, seed_super_admin):
     """Test retrieving a data quality rule"""
     rule_data = DataQualityRuleCreate(
         name="Get Test Rule",
@@ -52,9 +52,9 @@ async def test_get_data_quality_rule(db_session, super_admin_user):
         rule_type="required_field",
     )
 
-    created_rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    created_rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
-    retrieved_rule = await DataQualityService.get_rule(db_session, created_rule.id)
+    retrieved_rule = await DataQualityService.get_rule(test_session, created_rule.id)
 
     assert retrieved_rule is not None
     assert retrieved_rule.id == created_rule.id
@@ -62,7 +62,7 @@ async def test_get_data_quality_rule(db_session, super_admin_user):
 
 
 @pytest.mark.asyncio
-async def test_update_data_quality_rule(db_session, super_admin_user):
+async def test_update_data_quality_rule(test_session, seed_super_admin):
     """Test updating a data quality rule"""
     rule_data = DataQualityRuleCreate(
         name="Original Name",
@@ -71,7 +71,7 @@ async def test_update_data_quality_rule(db_session, super_admin_user):
         severity=RuleSeverity.LOW,
     )
 
-    rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
     update_data = DataQualityRuleUpdate(
         name="Updated Name",
@@ -79,7 +79,7 @@ async def test_update_data_quality_rule(db_session, super_admin_user):
     )
 
     updated_rule = await DataQualityService.update_rule(
-        db_session, rule.id, update_data, super_admin_user.id
+        test_session, rule.id, update_data, seed_super_admin.id
     )
 
     assert updated_rule is not None
@@ -88,7 +88,7 @@ async def test_update_data_quality_rule(db_session, super_admin_user):
 
 
 @pytest.mark.asyncio
-async def test_delete_data_quality_rule(db_session, super_admin_user):
+async def test_delete_data_quality_rule(test_session, seed_super_admin):
     """Test deleting a data quality rule"""
     rule_data = DataQualityRuleCreate(
         name="Delete Test Rule",
@@ -96,19 +96,19 @@ async def test_delete_data_quality_rule(db_session, super_admin_user):
         rule_type="consistency_check",
     )
 
-    rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
-    success = await DataQualityService.delete_rule(db_session, rule.id, super_admin_user.id)
+    success = await DataQualityService.delete_rule(test_session, rule.id, seed_super_admin.id)
 
     assert success is True
 
     # Verify it's actually deleted
-    deleted_rule = await DataQualityService.get_rule(db_session, rule.id)
+    deleted_rule = await DataQualityService.get_rule(test_session, rule.id)
     assert deleted_rule is None
 
 
 @pytest.mark.asyncio
-async def test_list_data_quality_rules(db_session, super_admin_user):
+async def test_list_data_quality_rules(test_session, seed_super_admin):
     """Test listing data quality rules with pagination"""
     # Create multiple rules
     for i in range(15):
@@ -117,17 +117,17 @@ async def test_list_data_quality_rules(db_session, super_admin_user):
             dimension=DataQualityDimension.ACCURACY if i % 2 == 0 else DataQualityDimension.COMPLETENESS,
             rule_type="test_rule",
         )
-        await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+        await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
     # Test default pagination
-    rules, total = await DataQualityService.list_rules(db_session, page=1, page_size=10)
+    rules, total = await DataQualityService.list_rules(test_session, page=1, page_size=10)
 
     assert total >= 15
     assert len(rules) <= 10
 
     # Test filtering by dimension
     accuracy_rules, accuracy_total = await DataQualityService.list_rules(
-        db_session,
+        test_session,
         dimension="accuracy",
         page=1,
         page_size=100,
@@ -138,7 +138,7 @@ async def test_list_data_quality_rules(db_session, super_admin_user):
 
 
 @pytest.mark.asyncio
-async def test_record_data_quality_result(db_session, super_admin_user):
+async def test_record_data_quality_result(test_session, seed_super_admin):
     """Test recording a data quality result"""
     rule_data = DataQualityRuleCreate(
         name="Rule for Results",
@@ -146,7 +146,7 @@ async def test_record_data_quality_result(db_session, super_admin_user):
         rule_type="test_rule",
     )
 
-    rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
     result_data = DataQualityResultCreate(
         rule_id=rule.id,
@@ -158,7 +158,7 @@ async def test_record_data_quality_result(db_session, super_admin_user):
         execution_duration_ms=1234,
     )
 
-    result = await DataQualityService.record_result(db_session, result_data)
+    result = await DataQualityService.record_result(test_session, result_data)
 
     assert result is not None
     assert result.rule_id == rule.id
@@ -167,7 +167,7 @@ async def test_record_data_quality_result(db_session, super_admin_user):
 
 
 @pytest.mark.asyncio
-async def test_get_rule_results(db_session, super_admin_user):
+async def test_get_rule_results(test_session, seed_super_admin):
     """Test retrieving results for a specific rule"""
     rule_data = DataQualityRuleCreate(
         name="Rule for Multiple Results",
@@ -175,7 +175,7 @@ async def test_get_rule_results(db_session, super_admin_user):
         rule_type="test_rule",
     )
 
-    rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
     # Record multiple results
     for i in range(5):
@@ -187,10 +187,10 @@ async def test_get_rule_results(db_session, super_admin_user):
             records_passed=90 + i,
             records_failed=10 - i,
         )
-        await DataQualityService.record_result(db_session, result_data)
+        await DataQualityService.record_result(test_session, result_data)
 
     results, total = await DataQualityService.get_rule_results(
-        db_session, rule.id, page=1, page_size=10
+        test_session, rule.id, page=1, page_size=10
     )
 
     assert total >= 5
@@ -198,7 +198,7 @@ async def test_get_rule_results(db_session, super_admin_user):
 
 
 @pytest.mark.asyncio
-async def test_calculate_metrics(db_session, super_admin_user):
+async def test_calculate_metrics(test_session, seed_super_admin):
     """Test calculating data quality metrics"""
     # Create rules with different dimensions
     for dimension in DataQualityDimension:
@@ -208,7 +208,7 @@ async def test_calculate_metrics(db_session, super_admin_user):
             rule_type="test_rule",
             status=RuleStatus.ACTIVE if dimension != DataQualityDimension.TIMELINESS else RuleStatus.DRAFT,
         )
-        rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+        rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
 
         # Record a result
         result_data = DataQualityResultCreate(
@@ -219,9 +219,9 @@ async def test_calculate_metrics(db_session, super_admin_user):
             records_passed=95,
             records_failed=5,
         )
-        await DataQualityService.record_result(db_session, result_data)
+        await DataQualityService.record_result(test_session, result_data)
 
-    metrics = await DataQualityService.calculate_metrics(db_session)
+    metrics = await DataQualityService.calculate_metrics(test_session)
 
     assert metrics.total_rules >= 6
     assert metrics.active_rules >= 5
@@ -248,7 +248,7 @@ def test_dimension_configurations():
 
 # Task 4: Monitoring Tests
 @pytest.mark.asyncio
-async def test_monitoring_service(db_session, super_admin_user):
+async def test_monitoring_service(test_session, seed_super_admin):
     """Test monitoring service calculations"""
     from app.services.monitoring_service import MonitoringService
     
@@ -258,7 +258,7 @@ async def test_monitoring_service(db_session, super_admin_user):
         dimension=DataQualityDimension.ACCURACY,
         rule_type="test_rule",
     )
-    rule = await DataQualityService.create_rule(db_session, rule_data, super_admin_user.id)
+    rule = await DataQualityService.create_rule(test_session, rule_data, seed_super_admin.id)
     
     # Create multiple results
     for i in range(5):
@@ -270,50 +270,67 @@ async def test_monitoring_service(db_session, super_admin_user):
             records_passed=90,
             records_failed=10,
         )
-        await DataQualityService.record_result(db_session, result_data)
+        await DataQualityService.record_result(test_session, result_data)
     
     # Test health score calculation
-    health = await MonitoringService.get_health_score(db_session)
+    health = await MonitoringService.get_health_score(test_session)
     assert health["health_score"] >= 0
     assert health["health_score"] <= 100
 
 
 # Task 6: Governance Tests
 @pytest.mark.asyncio
-async def test_governance_create_asset(db_session, super_admin_user):
-    """Test creating governance data asset"""
+async def test_governance_create_policy(test_session, seed_super_admin):
+    """Test creating a governance policy scoped to a domain"""
+    from app.services.data_hierarchy_service import DataHierarchyService
     from app.services.governance_service import GovernanceService
-    from app.schemas.data_governance import DataAssetCreate
-    from app.models.data_governance import ClassificationLevel
-    
-    asset_data = DataAssetCreate(
-        name="Test Asset",
-        asset_type="table",
-        classification=ClassificationLevel.CONFIDENTIAL,
+    from app.schemas.data_governance import GovernancePolicyCreate
+    from app.models.data_hierarchy import GovernancePolicyStatus
+
+    domain = await DataHierarchyService.create_domain(
+        test_session, name="Policy Test Domain", description=None,
+        business_owner_id=None, domain_steward_id=None,
+        current_user_id=seed_super_admin.id,
     )
-    
-    asset = await GovernanceService.create_data_asset(db_session, asset_data, super_admin_user.id)
-    
-    assert asset is not None
-    assert asset.name == "Test Asset"
-    assert asset.classification == ClassificationLevel.CONFIDENTIAL
+
+    policy_data = GovernancePolicyCreate(
+        name="Retention Policy",
+        domain_id=domain.id,
+        policy_type="retention",
+        status=GovernancePolicyStatus.ACTIVE,
+    )
+
+    policy = await GovernanceService.create_policy(test_session, policy_data, seed_super_admin.id)
+
+    assert policy is not None
+    assert policy.name == "Retention Policy"
+    assert policy.domain_id == domain.id
+    assert policy.status == GovernancePolicyStatus.ACTIVE
 
 
-# Task 7: Metadata Tests
 @pytest.mark.asyncio
-async def test_metadata_service(db_session):
-    """Test metadata management"""
-    from app.services.metadata_service import MetadataService
-    from app.models.metadata import DataType
-    from uuid import uuid4
-    
-    asset_id = uuid4()
-    metadata_data = {
-        "display_name": "Test Field",
-        "description": "Test Description",
-        "data_type": DataType.STRING,
-    }
-    
-    # Note: This would need a real data asset, but testing the service structure
-    stats = await MetadataService.get_metadata_statistics(db_session)
-    assert "total_metadata" in stats
+async def test_governance_assign_role(test_session, seed_super_admin):
+    """Test assigning a governance role (owner/steward/curator/analyst) to a domain"""
+    from app.services.data_hierarchy_service import DataHierarchyService
+    from app.services.governance_service import GovernanceService
+    from app.schemas.data_governance import GovernanceAssignmentCreate
+    from app.models.data_hierarchy import GovernanceRole
+
+    domain = await DataHierarchyService.create_domain(
+        test_session, name="Assignment Test Domain", description=None,
+        business_owner_id=None, domain_steward_id=None,
+        current_user_id=seed_super_admin.id,
+    )
+
+    assignment_data = GovernanceAssignmentCreate(
+        domain_id=domain.id,
+        role=GovernanceRole.STEWARD,
+        user_id=seed_super_admin.id,
+    )
+
+    assignment = await GovernanceService.create_assignment(test_session, assignment_data, seed_super_admin.id)
+
+    assert assignment is not None
+    assert assignment.domain_id == domain.id
+    assert assignment.role == GovernanceRole.STEWARD
+    assert assignment.user_id == seed_super_admin.id
