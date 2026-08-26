@@ -154,6 +154,45 @@ class DataHierarchyService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def update_dataset_domain(
+        db: AsyncSession,
+        dataset_id: UUID,
+        domain_id: UUID | None,
+        current_user_id: UUID = None,
+    ) -> Dataset | None:
+        """Assign, change, or clear (domain_id=None) the domain a dataset
+        belongs to. A dataset is never required to belong to a domain -
+        this is a normal, reversible action rather than a one-time choice
+        made at upload."""
+        dataset = await DataHierarchyService.get_dataset(db, dataset_id)
+        if dataset is None:
+            return None
+
+        if domain_id is not None:
+            domain = await DataHierarchyService.get_domain(db, domain_id)
+            if domain is None:
+                raise ValueError(f"Domain {domain_id} does not exist")
+
+        old_domain_id = dataset.domain_id
+        dataset.domain_id = domain_id
+        await db.flush()
+
+        if current_user_id:
+            await log_audit_action(
+                db=db,
+                user_id=current_user_id,
+                action="UPDATE",
+                entity_type="Dataset",
+                entity_id=str(dataset.id),
+                entity_name=dataset.name,
+                old_values={"domain_id": str(old_domain_id) if old_domain_id else None},
+                new_values={"domain_id": str(domain_id) if domain_id else None},
+            )
+
+        await db.commit()
+        return dataset
+
+    @staticmethod
     async def list_datasets_in_domain(
         db: AsyncSession,
         domain_id: UUID,

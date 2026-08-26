@@ -26,4 +26,9 @@ export const domainService = {
     const response = await api.get<Dataset>(`/v1/datasets/${datasetId}`);
     return response.data;
   },
+
+  async updateDatasetDomain(datasetId: string, domainId: string | null): Promise<Dataset> {
+    const response = await api.patch<Dataset>(`/v1/datasets/${datasetId}/domain`, { domain_id: domainId });
+    return response.data;
+  },
 };

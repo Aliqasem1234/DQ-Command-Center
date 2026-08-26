@@ -11,7 +11,7 @@ export interface Dataset {
   id: string;
   name: string;
   description: string | null;
-  domain_id: string;
+  domain_id: string | null;
   dataset_type: string;
   classification: string;
   row_count: number | null;

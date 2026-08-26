@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.data_hierarchy import Dataset, DatasetVersion, DatasetType, DatasetVersionStatus
+from app.models.data_hierarchy import Dataset, DatasetVersion, DatasetType, DatasetVersionStatus, DataDomain
 from app.services import file_storage_service
 from app.services.profiling_service import profile_dataset_version
 from app.services.dataframe_io import read_dataframe, write_dataframe
@@ -27,21 +27,29 @@ class DatasetProcessingError(Exception):
 
 async def create_dataset_from_upload(
     db: AsyncSession,
-    domain_id: UUID,
+    domain_id: UUID | None,
     name: str,
     description: str | None,
     file: UploadFile,
     current_user_id: UUID,
 ) -> DatasetVersion:
     """Create a brand-new Dataset and its first (original) DatasetVersion
-    from an uploaded file, then profile it immediately."""
+    from an uploaded file, then profile it immediately. domain_id is
+    optional - a dataset can be created unassigned and given a domain
+    later via PATCH /datasets/{id}/domain."""
     now = datetime.now(timezone.utc)
+
+    if domain_id is not None:
+        domain_exists = await db.execute(select(DataDomain.id).where(DataDomain.id == domain_id))
+        if domain_exists.scalar_one_or_none() is None:
+            raise ValueError(f"Domain {domain_id} does not exist")
 
     existing = await db.execute(
         select(Dataset).where(Dataset.domain_id == domain_id, Dataset.name == name)
     )
     if existing.scalar_one_or_none():
-        raise ValueError(f"A dataset named '{name}' already exists in this domain.")
+        scope = "in this domain" if domain_id is not None else "with no domain"
+        raise ValueError(f"A dataset named '{name}' already exists {scope}.")
 
     dataset = Dataset(
         name=name,
@@ -65,7 +73,7 @@ async def create_dataset_from_upload(
     await create_audit_log(
         db=db, user_id=current_user_id, action="CREATE", entity_type="Dataset",
         entity_id=str(dataset.id), entity_name=dataset.name,
-        new_values={"name": dataset.name, "domain_id": str(domain_id)},
+        new_values={"name": dataset.name, "domain_id": str(domain_id) if domain_id else None},
     )
     await db.commit()
 

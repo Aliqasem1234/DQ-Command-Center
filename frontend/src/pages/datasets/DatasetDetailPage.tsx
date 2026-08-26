@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, RefreshCw, Download, Upload, Sparkles, AlertCircle, CheckCircle,
-  Plus, Trash2, Play,
+  Plus, Trash2, Play, Pencil, Check, X as CloseIcon,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -35,6 +35,22 @@ export function DatasetDetailPage() {
     queryFn: () => domainService.getDataset(datasetId!),
     enabled: !!datasetId,
   });
+
+  const { data: domains } = useQuery({
+    queryKey: ['domains'],
+    queryFn: () => domainService.list(1, 50),
+  });
+
+  const handleDomainChange = async (domainId: string | null) => {
+    setActionError(null);
+    try {
+      await domainService.updateDatasetDomain(datasetId!, domainId);
+      await queryClient.invalidateQueries({ queryKey: ['dataset', datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ['all-datasets'] });
+    } catch (err) {
+      setActionError(getErrorMessage(err));
+    }
+  };
 
   const { data: versions, isLoading: versionsLoading } = useQuery({
     queryKey: ['dataset-versions', datasetId],
@@ -120,6 +136,11 @@ export function DatasetDetailPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{dataset.name}</h1>
           <p className="text-slate-600 text-sm mt-1">{dataset.description || t('datasets.noDescription')}</p>
+          <DomainBadge
+            domainId={dataset.domain_id}
+            domains={domains ?? []}
+            onChange={handleDomainChange}
+          />
         </div>
         <div className="flex items-center gap-3">
           <VersionPicker
@@ -188,6 +209,64 @@ export function DatasetDetailPage() {
         <VersionsTab versions={versions || []} onDownload={handleDownload} />
       )}
     </div>
+  );
+}
+
+function DomainBadge({
+  domainId,
+  domains,
+  onChange,
+}: {
+  domainId: string | null;
+  domains: { id: string; name: string }[];
+  onChange: (domainId: string | null) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(domainId ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const domainName = domainId ? domains.find((d) => d.id === domainId)?.name : null;
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 mt-2">
+        <select className="input-base w-auto py-1 text-sm" value={value} onChange={(e) => setValue(e.target.value)} autoFocus>
+          <option value="">{t('datasets.noDomainOption')}</option>
+          {domains.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+        <button
+          className="icon-btn !p-1.5 text-green-600"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            await onChange(value || null);
+            setSaving(false);
+            setEditing(false);
+          }}
+          title={t('common.save')}
+        >
+          <Check size={16} />
+        </button>
+        <button className="icon-btn !p-1.5" onClick={() => setEditing(false)} title={t('common.cancel')}>
+          <CloseIcon size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setValue(domainId ?? ''); setEditing(true); }}
+      className="flex items-center gap-1.5 mt-2 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 group"
+    >
+      <span className="border border-slate-200 dark:border-slate-700 rounded-md px-2 py-0.5">
+        {domainName ?? t('datasets.noDomainOption')}
+      </span>
+      <Pencil size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
   );
 }
 

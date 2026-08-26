@@ -46,7 +46,7 @@ from typing import Optional
 from app.database import get_db
 from app.schemas.data_hierarchy import (
     DataDomainResponse, DataDomainCreate, DataDomainUpdate,
-    DatasetResponse, DatasetCreate,
+    DatasetResponse, DatasetCreate, DatasetDomainUpdate,
     DataElementResponse, DataElementCreate,
     HealthScoreResponse, DashboardHealthResponse,
     SearchResultsResponse, QualityIssueSummaryResponse,
@@ -202,6 +202,27 @@ async def get_dataset(
 ) -> DatasetResponse:
     """Get a specific dataset"""
     dataset = await DataHierarchyService.get_dataset(db, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return dataset
+
+
+@router.patch("/datasets/{dataset_id}/domain", response_model=DatasetResponse)
+async def update_dataset_domain(
+    dataset_id: UUID,
+    request: DatasetDomainUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
+    _: None = Depends(require_permission("datasets:manage")),
+) -> DatasetResponse:
+    """Assign, change, or clear (domain_id: null) the domain a dataset
+    belongs to. A dataset is never required to have a domain."""
+    try:
+        dataset = await DataHierarchyService.update_dataset_domain(
+            db, dataset_id, request.domain_id, current_user.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     return dataset

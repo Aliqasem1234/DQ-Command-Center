@@ -57,7 +57,7 @@ async def _get_version_with_creator(db: AsyncSession, dataset_id: UUID, version_
 
 @router.post("/upload", response_model=DatasetVersionResponse, status_code=201, summary="Upload a file to create a new dataset")
 async def upload_new_dataset(
-    domain_id: UUID = Form(...),
+    domain_id: str | None = Form(None),
     name: str = Form(...),
     description: str | None = Form(None),
     file: UploadFile = File(...),
@@ -65,9 +65,19 @@ async def upload_new_dataset(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:manage")),
 ):
+    # A dataset is never required to have a domain, so an empty string (a
+    # blank form field, rather than an omitted one) is treated the same as
+    # not providing one at all.
+    parsed_domain_id: UUID | None = None
+    if domain_id:
+        try:
+            parsed_domain_id = UUID(domain_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid domain_id")
+
     try:
         version = await dataset_upload_service.create_dataset_from_upload(
-            db, domain_id, name, description, file, current_user.id
+            db, parsed_domain_id, name, description, file, current_user.id
         )
     except UploadValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))

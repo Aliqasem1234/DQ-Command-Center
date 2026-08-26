@@ -132,8 +132,8 @@ class Dataset(Base):
     business_definition = Column(Text, nullable=True)
     
     # Hierarchy
-    domain_id = Column(UUID(as_uuid=True), ForeignKey("data_domains.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+    domain_id = Column(UUID(as_uuid=True), ForeignKey("data_domains.id", ondelete="CASCADE"), nullable=True, index=True)
+
     # Type and location
     dataset_type = Column(Enum(DatasetType, native_enum=False), nullable=False, index=True)
     data_source_system = Column(String(255), nullable=True)  # e.g., "PostgreSQL", "S3", "Salesforce"

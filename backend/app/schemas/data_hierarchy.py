@@ -55,7 +55,7 @@ class DatasetBase(BaseModel):
 
 
 class DatasetCreate(DatasetBase):
-    domain_id: UUID
+    domain_id: Optional[UUID] = None
     data_source_system: Optional[str] = None
     database_name: Optional[str] = None
     table_name: Optional[str] = None
@@ -75,9 +75,13 @@ class DatasetUpdate(BaseModel):
     last_updated: Optional[datetime] = None
 
 
+class DatasetDomainUpdate(BaseModel):
+    domain_id: Optional[UUID] = None
+
+
 class DatasetResponse(DatasetBase):
     id: UUID
-    domain_id: UUID
+    domain_id: Optional[UUID] = None
     data_source_system: Optional[str]
     database_name: Optional[str]
     table_name: Optional[str]

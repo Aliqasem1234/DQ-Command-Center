@@ -6,13 +6,13 @@ import type {
 
 export const datasetFileService = {
   async uploadNewDataset(params: {
-    domainId: string;
+    domainId?: string;
     name: string;
     description?: string;
     file: File;
   }): Promise<DatasetVersion> {
     const form = new FormData();
-    form.append('domain_id', params.domainId);
+    if (params.domainId) form.append('domain_id', params.domainId);
     form.append('name', params.name);
     if (params.description) form.append('description', params.description);
     form.append('file', params.file);

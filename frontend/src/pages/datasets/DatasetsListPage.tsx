@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Upload, Database, ChevronRight } from 'lucide-react';
+import { Upload, Database, ChevronRight, Plus } from 'lucide-react';
 import { domainService } from '../../services/domainService';
 import { datasetFileService } from '../../services/datasetFileService';
 import { getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
+
+const NEW_DOMAIN_SENTINEL = '__new__';
 
 export function DatasetsListPage() {
   const { t } = useTranslation();
@@ -23,17 +25,24 @@ export function DatasetsListPage() {
     queryKey: ['domains'],
     queryFn: () => domainService.list(1, 50),
   });
+  const domainById = new Map((domains ?? []).map((d) => [d.id, d.name]));
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const handleUpload = async (form: { domainId: string; name: string; description: string; file: File }) => {
+  const handleUpload = async (form: { domainId: string; newDomainName: string; name: string; description: string; file: File }) => {
     setSaving(true);
     setUploadError(null);
     try {
+      let domainId = form.domainId;
+      if (domainId === NEW_DOMAIN_SENTINEL) {
+        const newDomain = await domainService.create({ name: form.newDomainName });
+        domainId = newDomain.id;
+        await queryClient.invalidateQueries({ queryKey: ['domains'] });
+      }
       const version = await datasetFileService.uploadNewDataset({
-        domainId: form.domainId,
+        domainId: domainId || undefined,
         name: form.name,
         description: form.description || undefined,
         file: form.file,
@@ -95,6 +104,9 @@ export function DatasetsListPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4 sm:gap-6 text-sm text-slate-500 flex-shrink-0 pl-[52px] sm:pl-0">
+                  <span className="whitespace-nowrap text-xs text-slate-400 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-0.5">
+                    {ds.domain_id ? (domainById.get(ds.domain_id) ?? t('datasets.domain')) : t('datasets.noDomainOption')}
+                  </span>
                   <span className="whitespace-nowrap">{ds.row_count ?? '—'} {t('datasets.rows')}</span>
                   <span className={`badge whitespace-nowrap ${ds.status === 'active' ? 'badge-success' : 'badge-info'}`}>
                     <span className="badge-dot" />
@@ -135,13 +147,16 @@ function UploadModal({
   saving: boolean;
   error: string | null;
   onCancel: () => void;
-  onUpload: (form: { domainId: string; name: string; description: string; file: File }) => void;
+  onUpload: (form: { domainId: string; newDomainName: string; name: string; description: string; file: File }) => void;
 }) {
   const { t } = useTranslation();
-  const [domainId, setDomainId] = useState(domains[0]?.id || '');
+  const [domainId, setDomainId] = useState('');
+  const [newDomainName, setNewDomainName] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
+
+  const isCreatingDomain = domainId === NEW_DOMAIN_SENTINEL;
 
   return (
     <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
@@ -153,8 +168,9 @@ function UploadModal({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!file || !domainId) return;
-            onUpload({ domainId, name, description, file });
+            if (!file) return;
+            if (isCreatingDomain && !newDomainName.trim()) return;
+            onUpload({ domainId, newDomainName: newDomainName.trim(), name, description, file });
           }}
         >
           <div className="p-6 space-y-4">
@@ -162,22 +178,32 @@ function UploadModal({
               <div className="alert alert-error text-sm">{error}</div>
             )}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{t('datasets.domain')}</label>
-              {domains.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  {t('datasets.noDomains')}
-                </p>
-              ) : (
-                <select className="input-base" value={domainId} onChange={(e) => setDomainId(e.target.value)} required>
-                  {domains.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                {t('datasets.domain')}
+                <span className="ml-1.5 font-normal text-slate-400">{t('common.optional')}</span>
+              </label>
+              <select className="input-base" value={domainId} onChange={(e) => setDomainId(e.target.value)}>
+                <option value="">{t('datasets.noDomainOption')}</option>
+                {domains.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+                <option value={NEW_DOMAIN_SENTINEL}>{t('datasets.createNewDomain')}</option>
+              </select>
+              <p className="text-xs text-slate-500 mt-1.5">{t('datasets.domainHint')}</p>
+              {isCreatingDomain && (
+                <input
+                  className="input-base mt-2"
+                  value={newDomainName}
+                  onChange={(e) => setNewDomainName(e.target.value)}
+                  placeholder={t('datasets.newDomainNamePlaceholder')}
+                  required
+                  autoFocus
+                />
               )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">{t('datasets.datasetName')}</label>
-              <input className="input-base" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+              <input className="input-base" value={name} onChange={(e) => setName(e.target.value)} required autoFocus={!isCreatingDomain} />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.description')}</label>
@@ -202,7 +228,8 @@ function UploadModal({
             >
               {t('common.cancel')}
             </button>
-            <button type="submit" disabled={saving || domains.length === 0} className="btn-primary">
+            <button type="submit" disabled={saving} className="btn-primary flex items-center gap-2">
+              {isCreatingDomain && !saving && <Plus size={16} />}
               {saving ? t('datasets.uploading') : t('datasets.uploadAndProfile')}
             </button>
           </div>
