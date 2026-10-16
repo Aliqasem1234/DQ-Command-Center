@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -5,11 +6,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from fastapi import Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
+from app.database import get_db
 from app.api.v1.router import router as v1_router
 from app.middleware.security import SecurityHeadersMiddleware
 from app.core.limiter import limiter
@@ -26,6 +31,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} in {settings.ENVIRONMENT} mode")
+    if settings.expose_auth_tokens:
+        logger.warning(
+            "DEV_EXPOSE_AUTH_TOKENS is on: password-reset and verification tokens are returned "
+            "in API responses, so anyone with API access can reset any account. Local use only."
+        )
     try:
         await secure_initialize()
     except Exception as e:
@@ -81,22 +91,43 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Rate limiter (shared instance in app.core.limiter so route modules can
 # apply per-endpoint limits via @limiter.limit(...))
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    # Same {"detail": ...} shape as every other API error, so clients have a
+    # single error contract (slowapi's default handler answers {"error": ...}).
+    response = JSONResponse(
+        status_code=429,
+        content={"detail": f"Too many requests: rate limit {exc.detail} exceeded. Try again shortly."},
+    )
+    return request.app.state.limiter._inject_headers(response, request.state.view_rate_limit)
+
+
 app.add_middleware(SlowAPIMiddleware)
 
 # Include routers
 app.include_router(v1_router)
 
 
-# Health check
+# Health check. Container health checks and nginx's /health use this, so
+# it must reflect whether the API can actually serve requests - i.e. reach
+# the database - not just whether the process is up.
 @app.get("/health", tags=["Health"])
-async def health_check():
-    return {
-        "status": "healthy",
+async def health_check(db: AsyncSession = Depends(get_db)):
+    try:
+        await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=3)
+        database = "ok"
+    except Exception as e:  # noqa: BLE001 - any failure means "not healthy"
+        logger.warning(f"Health check: database unreachable ({type(e).__name__})")
+        database = "unreachable"
+    body = {
+        "status": "healthy" if database == "ok" else "unhealthy",
         "app": settings.APP_NAME,
         "version": "1.0.0",
-        "environment": settings.ENVIRONMENT,
+        "database": database,
     }
+    return JSONResponse(status_code=200 if database == "ok" else 503, content=body)
 
 
 # Global exception handler

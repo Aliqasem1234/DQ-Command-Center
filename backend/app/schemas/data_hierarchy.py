@@ -333,9 +333,10 @@ class QualityTargetResponse(QualityTargetBase):
 # ===== ANALYTICS SCHEMAS =====
 
 class HealthScoreResponse(BaseModel):
-    health_score: float = Field(..., ge=0, le=100)
-    status: str  # excellent, good, fair, poor, critical
-    active_rules: Optional[int] = None
+    # None until at least one dataset has been scanned.
+    health_score: Optional[float] = Field(None, ge=0, le=100)
+    status: str  # excellent, good, fair, poor, critical, no_data
+    scanned_datasets: int = 0
     calculation_basis: str
 
 
@@ -368,7 +369,9 @@ class IssueAnalyticsResponse(BaseModel):
 
 
 class DashboardHealthResponse(BaseModel):
-    health_score: float = Field(..., ge=0, le=100)
+    # None until at least one of the user's datasets has been scanned.
+    health_score: Optional[float] = Field(None, ge=0, le=100)
+    scanned_datasets: int = 0
     status: str
     dimensions: Dict[str, DimensionScoreResponse]
     open_issues: int

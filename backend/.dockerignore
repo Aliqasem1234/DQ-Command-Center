@@ -1,0 +1,13 @@
+# Keep local artefacts and data out of the image.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+test.db
+*.sqlite3
+uploads/
+.env
+.env.*
+.venv/
+venv/

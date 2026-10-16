@@ -7,6 +7,7 @@ from app.dependencies import get_current_user_from_token
 from app.core.rbac import require_permission
 from app.models.user import User
 from app.services.results_reporting_service import ResultsReportingService
+from app.api.v1.data_quality import _get_visible_rule
 
 router = APIRouter(prefix="/results", tags=["Results Reporting"])
 
@@ -20,6 +21,7 @@ async def get_statistics(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get detailed statistics for results of a specific rule"""
+    await _get_visible_rule(db, rule_id, current_user)
     stats = await ResultsReportingService.get_result_statistics(db, rule_id=rule_id, days=days)
     return {"rule_id": str(rule_id), "days": days, **stats}
 
@@ -33,7 +35,9 @@ async def get_error_summary(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get summary of recent errors"""
-    errors = await ResultsReportingService.get_error_summary(db, rule_id=rule_id, limit=limit)
+    if rule_id is not None:
+        await _get_visible_rule(db, rule_id, current_user)
+    errors = await ResultsReportingService.get_error_summary(db, rule_id=rule_id, limit=limit, user=current_user)
     return {"limit": limit, "errors": errors}
 
 
@@ -46,6 +50,7 @@ async def get_timeline(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get timeline of recent results for a rule"""
+    await _get_visible_rule(db, rule_id, current_user)
     timeline = await ResultsReportingService.get_result_timeline(db, rule_id=rule_id, limit=limit)
     return {"rule_id": str(rule_id), "limit": limit, "timeline": timeline}
 
@@ -59,6 +64,7 @@ async def analyze_failures(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Analyze failure patterns and trends for a rule"""
+    await _get_visible_rule(db, rule_id, current_user)
     analysis = await ResultsReportingService.get_failure_analysis(db, rule_id=rule_id, days=days)
     return {"rule_id": str(rule_id), "days": days, **analysis}
 
@@ -71,5 +77,5 @@ async def generate_report(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Generate comprehensive quality report"""
-    report = await ResultsReportingService.get_quality_report(db, days=days)
+    report = await ResultsReportingService.get_quality_report(db, days=days, user=current_user)
     return report

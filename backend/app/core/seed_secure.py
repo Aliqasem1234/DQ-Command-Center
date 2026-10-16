@@ -8,6 +8,7 @@ Admin setup should only be visible in secure provisioning flow.
 import asyncio
 import logging
 import os
+import secrets
 from datetime import datetime, timezone
 from sqlalchemy import select
 from app.database import async_session_factory
@@ -53,6 +54,94 @@ DEMO_DEPARTMENTS = [
     {"name": "Operations", "description": "Operational data"},
     {"name": "Technology", "description": "Technology and infrastructure"},
 ]
+
+# Role-Permission Mapping: defines which permissions each role has
+ROLE_PERMISSIONS = {
+    "Super Admin": [
+        # Super Admin gets ALL permissions
+        "dashboard:view",
+        "data_quality:view",
+        "data_quality:manage",
+        "data_governance:view",
+        "data_governance:manage",
+        "datasets:view",
+        "datasets:manage",
+        "analytics:view",
+        "reports:view",
+        "reports:create",
+        "reports:export",
+        "users:manage",
+        "audit:view",
+        "roles:manage",
+        "departments:manage",
+        "profile:edit",
+    ],
+    "Admin": [
+        # Admin gets most permissions except system management
+        "dashboard:view",
+        "data_quality:view",
+        "data_quality:manage",
+        "data_governance:view",
+        "data_governance:manage",
+        "datasets:view",
+        "datasets:manage",
+        "analytics:view",
+        "reports:view",
+        "reports:create",
+        "reports:export",
+        "users:manage",
+        "audit:view",
+        "profile:edit",
+    ],
+    "Manager": [
+        # Manager can view and manage data quality and governance
+        "dashboard:view",
+        "data_quality:view",
+        "data_quality:manage",
+        "data_governance:view",
+        "data_governance:manage",
+        "datasets:view",
+        "datasets:manage",
+        "analytics:view",
+        "reports:view",
+        "reports:create",
+        "reports:export",
+        # No audit:view: the global audit log is platform administration.
+        "profile:edit",
+    ],
+    "Analyst": [
+        # Analyst can view dashboards and quality data, create reports
+        "dashboard:view",
+        "data_quality:view",
+        "data_governance:view",
+        "datasets:view",
+        "datasets:manage",
+        "analytics:view",
+        "reports:view",
+        "reports:create",
+        "reports:export",
+        "profile:edit",
+    ],
+    "User": [
+        # Every registered account gets the complete Data Quality product.
+        # These permissions only ever apply to the user's own data: row-level
+        # isolation is enforced in app.core.dataset_access. Platform
+        # administration (users, roles, departments, the global audit log)
+        # is deliberately not included.
+        "dashboard:view",
+        "data_quality:view",
+        "data_quality:manage",
+        "data_governance:view",
+        "data_governance:manage",
+        "datasets:view",
+        "datasets:manage",
+        "analytics:view",
+        "reports:view",
+        "reports:create",
+        "reports:export",
+        "profile:edit",
+    ],
+}
 
 
 async def initialize_system_data():
@@ -124,23 +213,27 @@ async def initialize_system_data():
                     await db.flush()
                     logger.info(f"Created department: {dept_data['name']}")
 
-            # Assign permissions to Super Admin role
-            super_admin_role = role_map.get("Super Admin")
-            if super_admin_role:
-                for perm in perm_map.values():
-                    result = await db.execute(
-                        select(RolePermission).where(
-                            RolePermission.role_id == super_admin_role.id,
-                            RolePermission.permission_id == perm.id,
-                        )
-                    )
-                    existing_rp = result.scalar_one_or_none()
-                    if not existing_rp:
-                        rp = RolePermission(
-                            role_id=super_admin_role.id,
-                            permission_id=perm.id,
-                        )
-                        db.add(rp)
+            # Assign permissions to all roles based on ROLE_PERMISSIONS mapping
+            for role_name, permission_codes in ROLE_PERMISSIONS.items():
+                role = role_map.get(role_name)
+                if role:
+                    for perm_code in permission_codes:
+                        perm = perm_map.get(perm_code)
+                        if perm:
+                            result = await db.execute(
+                                select(RolePermission).where(
+                                    RolePermission.role_id == role.id,
+                                    RolePermission.permission_id == perm.id,
+                                )
+                            )
+                            existing_rp = result.scalar_one_or_none()
+                            if not existing_rp:
+                                rp = RolePermission(
+                                    role_id=role.id,
+                                    permission_id=perm.id,
+                                )
+                                db.add(rp)
+                                logger.info(f"Assigned {perm_code} to {role_name}")
 
             await db.commit()
             logger.info("System data initialized successfully")
@@ -232,10 +325,14 @@ async def seed_demo_data():
                         demo_users.append(existing_user)
                         continue
 
+                    # Demo users only own showcase data; nobody needs to sign
+                    # in as them. A random, never-logged password keeps them
+                    # from becoming known-credential accounts (the previous
+                    # fixed password was stored in this repository).
                     user = User(
                         email=email,
                         username=f"demo{i+1}",
-                        password_hash=hash_password("[REDACTED-DEV-CREDENTIAL]"),
+                        password_hash=hash_password(secrets.token_urlsafe(32)),
                         full_name=name,
                         is_active=True,
                         is_verified=True,

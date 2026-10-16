@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { dataQualityService } from '../../services/dataQualityService';
+import { domainService } from '../../services/domainService';
 import { getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -12,6 +13,8 @@ import {
   RuleSeverity,
   type DataQualityRule,
 } from '../../types/dataQuality';
+import { usePermission } from '../../hooks/usePermission';
+import { PERMISSIONS } from '../../auth/permissions';
 
 const DIMENSIONS = Object.values(DataQualityDimension);
 const SEVERITIES = Object.values(RuleSeverity);
@@ -19,11 +22,18 @@ const SEVERITIES = Object.values(RuleSeverity);
 export default function DataQualityRulesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const canManage = usePermission(PERMISSIONS.qualityManage);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['data-quality-rules'],
     queryFn: () => dataQualityService.listRules(undefined, undefined, 1, 100),
   });
+  // The user's own datasets: names for the table, choices for new rules.
+  const { data: datasets } = useQuery({
+    queryKey: ['all-datasets'],
+    queryFn: () => domainService.listAllDatasets(),
+  });
+  const datasetName = new Map((datasets ?? []).map((d) => [d.id, d.name]));
 
   const [editing, setEditing] = useState<DataQualityRule | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -42,6 +52,7 @@ export default function DataQualityRulesPage() {
     dimension: DataQualityDimension;
     rule_type: string;
     severity: RuleSeverity;
+    dataset_id?: string;
     data_source?: string;
     target_field?: string;
   }) => {
@@ -49,7 +60,9 @@ export default function DataQualityRulesPage() {
     setFormError(null);
     try {
       if (editing) {
-        await dataQualityService.updateRule(editing.id, form);
+        // A rule's dataset is fixed when it is created.
+        const { dataset_id: _ignored, ...changes } = form;
+        await dataQualityService.updateRule(editing.id, changes);
       } else {
         await dataQualityService.createRule(form);
       }
@@ -80,10 +93,12 @@ export default function DataQualityRulesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('dataQuality.rules')}</h1>
-        <button className="flex items-center gap-2 btn-primary" onClick={() => setIsCreating(true)}>
-          <Plus size={18} />
-          {t('common.add')}
-        </button>
+        {canManage && (
+          <button className="flex items-center gap-2 btn-primary" onClick={() => setIsCreating(true)}>
+            <Plus size={18} />
+            {t('common.add')}
+          </button>
+        )}
       </div>
 
       {formError && (
@@ -116,8 +131,10 @@ export default function DataQualityRulesPage() {
                 {rules.map((rule) => (
                   <tr key={rule.id}>
                     <td className="font-medium text-slate-900">{rule.name}</td>
-                    <td className="text-slate-500">{rule.data_source || '—'}</td>
-                    <td className="text-slate-600 capitalize">{rule.dimension}</td>
+                    <td className="text-slate-500">
+                      {(rule.dataset_id && datasetName.get(rule.dataset_id)) || rule.data_source || '—'}
+                    </td>
+                    <td className="text-slate-600">{t(`dimensions.${rule.dimension}`, { defaultValue: rule.dimension })}</td>
                     <td>
                       <span
                         className={`badge capitalize ${
@@ -127,7 +144,7 @@ export default function DataQualityRulesPage() {
                         }`}
                       >
                         <span className="badge-dot" />
-                        {rule.severity}
+                        {t(`dataQuality.severityLevel.${rule.severity}`, { defaultValue: rule.severity })}
                       </span>
                     </td>
                     <td>
@@ -135,11 +152,11 @@ export default function DataQualityRulesPage() {
                         className={`badge capitalize ${rule.status === 'active' ? 'badge-success' : 'badge-info'}`}
                       >
                         <span className="badge-dot" />
-                        {rule.status}
+                        {t(`dataQuality.statusValue.${rule.status}`, { defaultValue: rule.status })}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      {canManage && <div className="flex items-center justify-end gap-2">
                         <button
                           className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
                           onClick={() => setEditing(rule)}
@@ -154,7 +171,7 @@ export default function DataQualityRulesPage() {
                         >
                           <Trash2 size={16} />
                         </button>
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 ))}
@@ -165,7 +182,7 @@ export default function DataQualityRulesPage() {
       </div>
 
       {(isCreating || editing) && (
-        <RuleFormModal initial={editing} saving={saving} onCancel={closeForm} onSave={handleSave} />
+        <RuleFormModal initial={editing} datasets={datasets ?? []} saving={saving} onCancel={closeForm} onSave={handleSave} />
       )}
 
       <ConfirmDialog
@@ -181,11 +198,13 @@ export default function DataQualityRulesPage() {
 
 function RuleFormModal({
   initial,
+  datasets,
   saving,
   onCancel,
   onSave,
 }: {
   initial: DataQualityRule | null;
+  datasets: { id: string; name: string }[];
   saving: boolean;
   onCancel: () => void;
   onSave: (form: {
@@ -193,6 +212,7 @@ function RuleFormModal({
     dimension: DataQualityDimension;
     rule_type: string;
     severity: RuleSeverity;
+    dataset_id?: string;
     data_source?: string;
     target_field?: string;
   }) => void;
@@ -205,6 +225,7 @@ function RuleFormModal({
   const [ruleType, setRuleType] = useState(initial?.rule_type ?? 'required_field');
   const [severity, setSeverity] = useState<RuleSeverity>(initial?.severity ?? RuleSeverity.MEDIUM);
   const [dataSource, setDataSource] = useState(initial?.data_source ?? '');
+  const [datasetId, setDatasetId] = useState('');
   const [targetField, setTargetField] = useState(initial?.target_field ?? '');
 
   return (
@@ -223,6 +244,7 @@ function RuleFormModal({
               dimension,
               rule_type: ruleType,
               severity,
+              dataset_id: datasetId || undefined,
               data_source: dataSource || undefined,
               target_field: targetField || undefined,
             });
@@ -242,7 +264,7 @@ function RuleFormModal({
                   onChange={(e) => setDimension(e.target.value as DataQualityDimension)}
                 >
                   {DIMENSIONS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
+                    <option key={d} value={d}>{t(`dimensions.${d}`, { defaultValue: d })}</option>
                   ))}
                 </select>
               </div>
@@ -254,7 +276,7 @@ function RuleFormModal({
                   onChange={(e) => setSeverity(e.target.value as RuleSeverity)}
                 >
                   {SEVERITIES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>{t(`dataQuality.severityLevel.${s}`, { defaultValue: s })}</option>
                   ))}
                 </select>
               </div>
@@ -263,6 +285,17 @@ function RuleFormModal({
               <label className="block text-sm font-medium text-slate-700 mb-1">{t('dataQuality.ruleType')}</label>
               <input className="input-base" value={ruleType} onChange={(e) => setRuleType(e.target.value)} required />
             </div>
+            {!initial && (
+              <div>
+                <label htmlFor="rule-dataset" className="block text-sm font-medium text-slate-700 mb-1">{t('common.dataset')}</label>
+                <select id="rule-dataset" className="input-base" value={datasetId} onChange={(e) => setDatasetId(e.target.value)}>
+                  <option value="">{t('dataQuality.noDataset')}</option>
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('dataQuality.dataSource')}</label>

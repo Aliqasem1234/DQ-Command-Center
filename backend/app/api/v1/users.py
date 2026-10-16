@@ -16,6 +16,13 @@ from app.services import user_service
 router = APIRouter(prefix="/users")
 
 
+async def _ensure_can_manage(db, actor, target_id=None, requested_roles=None):
+    try:
+        await user_service.ensure_can_manage(db, actor, target_id=target_id, requested_roles=requested_roles)
+    except user_service.PrivilegeEscalationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
 @router.get(
     "",
     response_model=UserListResponse,
@@ -26,17 +33,17 @@ async def list_users(
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     role: Optional[str] = Query(None),
-    department_id: Optional[str] = Query(None),
+    department_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
-    sort_by: str = Query("created_at"),
-    sort_order: str = Query("desc"),
+    sort_by: str = Query("created_at", pattern="^(created_at|updated_at|email|username|full_name|last_login_at)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: User = Depends(require_permission(USERS_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
     return await user_service.list_users(
         db, page=page, page_size=page_size,
         search=search, role=role,
-        department_id=department_id, is_active=is_active,
+        department_id=str(department_id) if department_id else None, is_active=is_active,
         sort_by=sort_by, sort_order=sort_order,
     )
 
@@ -69,6 +76,7 @@ async def create_user(
     current_user: User = Depends(require_permission(USERS_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_can_manage(db, current_user, requested_roles=body.roles)
     try:
         return await user_service.admin_create_user(
             db, body,
@@ -92,6 +100,7 @@ async def update_user(
     current_user: User = Depends(require_permission(USERS_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_can_manage(db, current_user, target_id=user_id)
     try:
         user = await user_service.admin_update_user(
             db, user_id, body,
@@ -119,6 +128,7 @@ async def delete_user(
 ):
     if current_user.id == user_id:
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+    await _ensure_can_manage(db, current_user, target_id=user_id)
     success = await user_service.admin_delete_user(
         db, user_id,
         actor_user_id=current_user.id,
@@ -141,6 +151,7 @@ async def assign_user_roles(
     current_user: User = Depends(require_permission(USERS_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_can_manage(db, current_user, target_id=user_id, requested_roles=body.roles)
     user = await user_service.assign_user_roles(
         db, user_id, body,
         actor_user_id=current_user.id,

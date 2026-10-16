@@ -65,6 +65,10 @@ def infer_column_type(series: pd.Series) -> str:
 
 
 def profile_column(series: pd.Series) -> dict:
+    # Whitespace-only cells are missing values - the quality scan already
+    # treats them that way, so the profile must too or the two disagree.
+    blank = series.notna() & (series.astype(str).str.strip() == "")
+    series = series.mask(blank)
     total = len(series)
     non_null = series.dropna()
     non_null_str = non_null.astype(str)

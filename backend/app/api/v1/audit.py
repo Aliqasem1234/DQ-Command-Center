@@ -26,8 +26,8 @@ async def list_audit_logs(
     user_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    sort_by: str = Query("created_at"),
-    sort_order: str = Query("desc"),
+    sort_by: str = Query("created_at", pattern="^(created_at|action|entity_type)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: User = Depends(require_permission(AUDIT_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
@@ -35,6 +35,34 @@ async def list_audit_logs(
         db, page=page, page_size=page_size,
         action=action, entity_type=entity_type,
         user_id=user_id,
+        date_from=date_from, date_to=date_to,
+        sort_by=sort_by, sort_order=sort_order,
+    )
+
+
+@router.get(
+    "/my-logs",
+    response_model=AuditLogListResponse,
+    summary="The caller's own activity (no special permission needed)",
+)
+async def list_my_audit_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    action: Optional[str] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    sort_by: str = Query("created_at", pattern="^(created_at|action|entity_type)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    # Every user may review what they did; the full log of everyone's
+    # actions (GET /logs) stays an administrator permission (audit:view).
+    return await audit_service.list_audit_logs(
+        db, page=page, page_size=page_size,
+        action=action, entity_type=entity_type,
+        user_id=str(current_user.id),
         date_from=date_from, date_to=date_to,
         sort_by=sort_by, sort_order=sort_order,
     )

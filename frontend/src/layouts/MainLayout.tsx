@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,8 +10,8 @@ import {
   Shield as RolesIcon,
   History as AuditIcon,
   User as ProfileIcon,
-  Moon as DarkIcon,
-  Sun as LightIcon,
+  KeyRound as SecurityIcon,
+  ScrollText as SystemLogIcon,
   LogOut as LogoutIcon,
   CheckCircle as QualityIcon,
   Eye as MonitorIcon,
@@ -20,14 +20,16 @@ import {
   Landmark as GovernanceIcon,
   Activity as BrandIcon,
 } from 'lucide-react';
-import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useAuth } from '../hooks/useAuth';
+import { authService } from '../services/authService';
+import { hasPermission, PERMISSIONS as P } from '../auth/permissions';
 
 interface NavItem {
   path: string;
   label: string;
   icon: typeof DashboardIcon;
+  permission?: string;
 }
 
 interface NavSection {
@@ -35,30 +37,46 @@ interface NavSection {
   items: NavItem[];
 }
 
+// Product sections are for every user (scoped to their own data by the
+// API); ADMINISTRATION is platform administration and only appears for
+// accounts holding those permissions.
 const navSections: NavSection[] = [
   {
-    label: null,
+    label: 'nav.sectionOverview',
     items: [{ path: '/dashboard', label: 'nav.dashboard', icon: DashboardIcon }],
   },
   {
     label: 'nav.sectionData',
-    items: [{ path: '/datasets', label: 'nav.datasets', icon: DatasetsIcon }],
+    items: [{ path: '/datasets', label: 'nav.datasets', icon: DatasetsIcon, permission: P.datasetsView }],
   },
   {
-    label: 'nav.sectionQuality',
+    label: 'nav.sectionDataQuality',
     items: [
-      { path: '/data-quality/rules', label: 'dataQuality.rules', icon: QualityIcon },
-      { path: '/data-quality/monitoring', label: 'dataQuality.monitoring', icon: MonitorIcon },
-      { path: '/governance', label: 'nav.governance', icon: GovernanceIcon },
+      { path: '/data-quality/rules', label: 'dataQuality.rules', icon: QualityIcon, permission: P.qualityView },
+      { path: '/data-quality/monitoring', label: 'dataQuality.monitoring', icon: MonitorIcon, permission: P.qualityView },
+    ],
+  },
+  {
+    label: 'nav.sectionGovernance',
+    items: [
+      { path: '/governance', label: 'nav.governance', icon: GovernanceIcon, permission: P.governanceView },
+      { path: '/activity', label: 'nav.activity', icon: AuditIcon },
+    ],
+  },
+  {
+    label: 'nav.sectionSettings',
+    items: [
+      { path: '/profile', label: 'nav.myProfile', icon: ProfileIcon },
+      { path: '/security', label: 'nav.security', icon: SecurityIcon },
     ],
   },
   {
     label: 'nav.sectionAdmin',
     items: [
-      { path: '/departments', label: 'nav.departments', icon: DeptIcon },
-      { path: '/users', label: 'nav.users', icon: PeopleIcon },
-      { path: '/roles', label: 'nav.roles', icon: RolesIcon },
-      { path: '/audit', label: 'nav.audit', icon: AuditIcon },
+      { path: '/users', label: 'nav.users', icon: PeopleIcon, permission: P.usersManage },
+      { path: '/roles', label: 'nav.rolesPermissions', icon: RolesIcon, permission: P.rolesManage },
+      { path: '/departments', label: 'nav.departments', icon: DeptIcon, permission: P.departmentsManage },
+      { path: '/audit', label: 'nav.systemLog', icon: SystemLogIcon, permission: P.auditView },
     ],
   },
 ];
@@ -67,11 +85,33 @@ export function MainLayout() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const { mode, toggleTheme } = useThemeStore();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const { logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Re-read the profile once per load so role/permission changes made by an
+  // admin take effect, and sessions persisted before the API returned
+  // permissions get them. A 401 here is handled by the API interceptor.
+  useEffect(() => {
+    let cancelled = false;
+    authService
+      .getCurrentUser()
+      .then((fresh) => {
+        if (!cancelled) setUser(fresh);
+      })
+      .catch(() => {
+        // Don't leave permission-gated routes waiting forever on a legacy
+        // session; the backend still enforces the real permissions.
+        const current = useAuthStore.getState().user;
+        if (!cancelled && current && current.permissions === undefined) {
+          setUser({ ...current, permissions: [] });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [setUser]);
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
   const handleLanguageChange = (lng: string) => {
@@ -84,6 +124,15 @@ export function MainLayout() {
 
   const primaryRole = user?.is_super_admin ? t('profile.superAdmin') : user?.roles?.[0];
 
+  // Only show what the user may open; a section whose items are all hidden
+  // disappears with them.
+  const visibleSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.permission || hasPermission(user, item.permission)),
+    }))
+    .filter((section) => section.items.length > 0);
+
   const drawerContent = (
     <div className="flex flex-col h-full">
       <div className="h-16 flex items-center gap-2.5 px-5 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -95,7 +144,7 @@ export function MainLayout() {
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {navSections.map((section, i) => (
+        {visibleSections.map((section, i) => (
           <div key={i} className={i > 0 ? 'mt-6' : ''}>
             {section.label && (
               <p className="px-3 mb-2 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -162,20 +211,6 @@ export function MainLayout() {
               <option value="en">{t('language.en')}</option>
               <option value="sv">{t('language.sv')}</option>
             </select>
-
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              className="icon-btn"
-              title={t(mode === 'light' ? 'theme.dark' : 'theme.light')}
-              aria-label={t(mode === 'light' ? 'theme.dark' : 'theme.light')}
-            >
-              {mode === 'light' ? (
-                <DarkIcon className="w-[18px] h-[18px]" />
-              ) : (
-                <LightIcon className="w-[18px] h-[18px]" />
-              )}
-            </button>
 
             <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 mx-1" />
 

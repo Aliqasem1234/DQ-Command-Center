@@ -14,6 +14,9 @@ export interface User {
   is_super_admin: boolean;
   created_at: string;
   roles: string[];
+  // Absent on sessions persisted before the API returned it; refreshed
+  // from /auth/me on load.
+  permissions?: string[];
 }
 
 interface AuthState {

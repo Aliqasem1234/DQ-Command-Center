@@ -22,7 +22,16 @@
     "admin": "Admin",
     "logout": "Logga ut",
     "login": "Logga in",
-    "register": "Registrera"
+    "register": "Registrera",
+    "sectionOverview": "Översikt",
+    "sectionDataQuality": "Datakvalitet",
+    "sectionGovernance": "Datastyrning",
+    "sectionSettings": "Inställningar",
+    "activity": "Revisionslogg",
+    "systemLog": "Systemlogg",
+    "myProfile": "Min profil",
+    "security": "Säkerhet",
+    "rolesPermissions": "Roller och behörigheter"
   },
   "auth": {
     "login": "Logga in",
@@ -58,7 +67,7 @@
     "backToLogin": "Tillbaka till inloggning",
     "redirecting": "Omdirigerar...",
     "loginSuccess": "Inloggning lyckades",
-    "registerSuccess": "Registrering lyckades. Kontrollera din e-post.",
+    "registerSuccess": "Kontot har skapats. Du kan nu logga in.",
     "registrationFailed": "Registreringen misslyckades",
     "logoutSuccess": "Utloggning lyckades",
     "passwordResetSent": "Om e-postadressen finns har en återställningslänk skickats.",
@@ -201,7 +210,11 @@
     "statusCritical": "Kritisk",
     "statusFair": "Acceptabel",
     "statusGood": "Bra",
-    "statusExcellent": "Utmärkt"
+    "statusExcellent": "Utmärkt",
+    "welcomeTitle": "Välkommen! Börja med din första datauppsättning",
+    "welcomeMessage": "Ladda upp en CSV- eller Excel-fil. Den profileras direkt, och när du skannar den visas kvalitetsproblem, poäng och trender här.",
+    "healthNoData": "Skanna en datauppsättning för att få ett hälsovärde.",
+    "qualityScoreLegend": "Kvalitetspoäng %"
   },
   "datasets": {
     "title": "Datauppsättningar",
@@ -290,7 +303,9 @@
       "normalize_dates": "Normalisera datumformat",
       "remove_duplicate_rows": "Ta bort exakta dubblettrader",
       "fill_missing": "Fyll i saknade värden"
-    }
+    },
+    "deleteDataset": "Ta bort datauppsättning",
+    "deleteDatasetConfirm": "Ta bort \"{{name}}\" permanent? Alla versioner, filer, profilering, regler och problem för datauppsättningen tas bort. Det går inte att ångra."
   },
   "governance": {
     "title": "Styrning",
@@ -324,13 +339,19 @@
     "selectUser": "Välj en användare",
     "selectScope": "Välj vad detta gäller",
     "policyName": "Policynamn",
-    "policyDescription": "Beskrivning"
+    "policyDescription": "Beskrivning",
+    "userNotFound": "Ingen aktiv användare har den e-postadressen.",
+    "assigneeEmailPlaceholder": "kollega@exempel.se",
+    "assigneeEmailHelp": "Ange den exakta e-postadressen för personen du vill dela med. Personen får tillgång till det du väljer ovan."
   },
   "audit": {
     "entityType": "Entitetstyp",
     "action": "Åtgärd",
     "timestamp": "Tidsstämpel",
-    "entityId": "Entitets-ID"
+    "entityId": "Entitets-ID",
+    "mineSubtitle": "Det du själv har gjort: uppladdningar, rensningar, regler och ändringar.",
+    "systemSubtitle": "Alla användares åtgärder i hela plattformen.",
+    "mineEmpty": "Ingen aktivitet ännu. När du laddar upp eller ändrar data visas det här."
   },
   "profile": {
     "title": "Profil",
@@ -338,7 +359,9 @@
     "superAdmin": "Superadministratör"
   },
   "users": {
-    "deactivateConfirm": "Är du säker på att du vill inaktivera den här användaren?"
+    "deactivateConfirm": "Är du säker på att du vill inaktivera den här användaren?",
+    "editRoles": "Ändra roller",
+    "deactivate": "Inaktivera användare"
   },
   "roles": {
     "deleteConfirm": "Är du säker på att du vill ta bort den här rollen?",
@@ -373,7 +396,20 @@
     "deleteConfirm": "Är du säker på att du vill ta bort denna regel?",
     "noMonitoringData": "När kvalitetsregler har skapats för varje dimension visas övervakningsdata här.",
     "healthy": "Frisk",
-    "warning": "Varning"
+    "warning": "Varning",
+    "noDataset": "Ingen (regeln gäller inte en viss datauppsättning)",
+    "severityLevel": {
+      "low": "Låg",
+      "medium": "Medel",
+      "high": "Hög",
+      "critical": "Kritisk"
+    },
+    "statusValue": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "draft": "Utkast",
+      "archived": "Arkiverad"
+    }
   },
   "dimensions": {
     "accuracy": "Noggrannhet",
@@ -400,5 +436,49 @@
     "source": "Källa",
     "steward": "Dataförvaltare",
     "owner": "Dataägare"
+  },
+  "apiErrors": {
+    "network": "Det gick inte att nå servern. Kontrollera anslutningen och försök igen.",
+    "timeout": "Servern svarade inte i tid. Försök igen.",
+    "rateLimited": "För många försök. Vänta en minut och försök igen.",
+    "unauthorized": "Din session har gått ut. Logga in igen.",
+    "forbidden": "Du har inte behörighet att göra detta.",
+    "notFound": "Det efterfrågade objektet hittades inte.",
+    "server": "Något gick fel på servern. Försök igen senare.",
+    "badRequest": "Begäran kunde inte behandlas. Kontrollera uppgifterna och försök igen.",
+    "invalidInput": "Kontrollera uppgifterna och försök igen.",
+    "fieldRequired": "{{field}} måste fyllas i.",
+    "fieldTooShort": "{{field}} måste vara minst {{min}} tecken.",
+    "fieldTooLong": "{{field}} får vara högst {{max}} tecken.",
+    "fieldInvalid": "{{field}} är ogiltigt.",
+    "invalidEmail": "Ange en giltig e-postadress.",
+    "emailTaken": "E-postadressen är redan registrerad.",
+    "usernameTaken": "Användarnamnet är redan upptaget.",
+    "invalidCredentials": "Fel e-postadress eller lösenord.",
+    "accountLocked": "Kontot är tillfälligt låst efter för många misslyckade försök. Försök igen senare.",
+    "accountDeactivated": "Kontot har avaktiverats.",
+    "invalidResetToken": "Återställningslänken är ogiltig eller har gått ut.",
+    "invalidVerificationToken": "Verifieringslänken är ogiltig eller har gått ut.",
+    "currentPasswordIncorrect": "Det nuvarande lösenordet är felaktigt.",
+    "cannotDeactivateSelf": "Du kan inte avaktivera ditt eget konto.",
+    "superAdminOnly": "Endast en superadministratör kan göra detta.",
+    "systemRoleLocked": "Systemroller kan inte ändras eller tas bort.",
+    "nameTaken": "Namnet används redan.",
+    "datasetNameTaken": "Det finns redan en datauppsättning med det namnet.",
+    "fileTooLarge": "Filen är för stor.",
+    "unsupportedFile": "Filtypen stöds inte.",
+    "fileProcessing": "Filen kunde inte läsas. Kontrollera att det är en giltig CSV- eller Excel-fil."
+  },
+  "fields": {
+    "email": "E-postadress",
+    "password": "Lösenord",
+    "new_password": "Nytt lösenord",
+    "current_password": "Nuvarande lösenord",
+    "full_name": "Fullständigt namn",
+    "username": "Användarnamn",
+    "name": "Namn",
+    "description": "Beskrivning",
+    "token": "Token",
+    "file": "Fil"
   }
 }

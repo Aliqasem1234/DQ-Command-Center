@@ -44,8 +44,12 @@ async def create_dataset_from_upload(
         if domain_exists.scalar_one_or_none() is None:
             raise ValueError(f"Domain {domain_id} does not exist")
 
+    # Names only need to be unique among the uploader's own datasets;
+    # checking globally blocked - and revealed - other users' dataset names.
     existing = await db.execute(
-        select(Dataset).where(Dataset.domain_id == domain_id, Dataset.name == name)
+        select(Dataset).where(
+            Dataset.domain_id == domain_id, Dataset.name == name, Dataset.data_owner_id == current_user_id
+        )
     )
     if existing.scalar_one_or_none():
         scope = "in this domain" if domain_id is not None else "with no domain"

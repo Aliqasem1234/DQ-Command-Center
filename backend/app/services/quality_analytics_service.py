@@ -18,9 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.data_quality_rule import DataQualityRule, DataQualityResult, DataQualityDimension, RuleStatus
 from app.models.data_hierarchy import (
-    Dataset, QualityIssue, RuleEffectiveness,
+    Dataset, DatasetVersion, QualityIssue, RuleEffectiveness,
     QualityCheckRun, IssueSeverity, IssueStatus
 )
+from app.core.dataset_access import accessible_dataset_ids, visible_rules_clause
 
 logger = logging.getLogger(__name__)
 
@@ -28,332 +29,227 @@ logger = logging.getLogger(__name__)
 class QualityAnalyticsService:
     """Service for quality analytics and health calculations"""
 
+    # ------------------------------------------------------------------
+    # Every function takes an optional `user`. When given, only data the
+    # user may access is aggregated (app.core.dataset_access), so nobody
+    # ever sees global numbers presented as their own.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _dataset_conditions(column, user, dataset_id):
+        conditions = []
+        if user is not None:
+            conditions.append(column.in_(accessible_dataset_ids(user)))
+        if dataset_id:
+            conditions.append(column == dataset_id)
+        return conditions
+
+    @staticmethod
+    def _status_for(score: float | None) -> str:
+        if score is None:
+            return "no_data"
+        if score >= 95:
+            return "excellent"
+        if score >= 85:
+            return "good"
+        if score >= 70:
+            return "fair"
+        if score >= 50:
+            return "poor"
+        return "critical"
+
     @staticmethod
     async def calculate_overall_health_score(
         db: AsyncSession,
         domain_id: UUID = None,
         dataset_id: UUID = None,
         days: int = 30,
+        user=None,
     ) -> dict:
-        """
-        Calculate overall data quality health score (0-100)
-        
-        Factors:
-        - Quality rule pass rates (weighted)
-        - Severity of failing rules
-        - Open issues
-        - SLA compliance
-        """
-        try:
-            now = datetime.now(timezone.utc)
-            cutoff_date = now - timedelta(days=days)
+        """Overall health = the average quality score of the datasets in
+        scope, each taken from its most recently created scanned version.
 
-            # Get relevant rules
-            query = select(DataQualityRule).where(
-                DataQualityRule.status == RuleStatus.ACTIVE
+        A dataset's quality score is the share of its cells not affected by
+        any failing check (quality_discovery_service.compute_quality_score),
+        so this is the same number users see on each dataset, averaged.
+        Datasets that have never been scanned have no score and are left
+        out; with none scanned the health is unknown (None), not "100%".
+        (Previously: a pass rate of check *runs* divided by a severity
+        weight, which scored a fully passing critical rule 50 and reported
+        100% "excellent" when there was no data at all.)
+        """
+        conditions = QualityAnalyticsService._dataset_conditions(DatasetVersion.dataset_id, user, dataset_id)
+        latest = (
+            select(
+                DatasetVersion.dataset_id,
+                DatasetVersion.quality_score,
+                func.row_number().over(
+                    partition_by=DatasetVersion.dataset_id,
+                    order_by=(DatasetVersion.version_number.desc()),
+                ).label("rn"),
             )
-            
-            if dataset_id:
-                query = query.where(DataQualityRule.dataset_id == dataset_id)
-            
-            rule_result = await db.execute(query)
-            active_rules = rule_result.scalars().all()
-
-            if not active_rules:
-                # No rules = perfect health (no quality issues detected)
-                return {
-                    "health_score": 100.0,
-                    "status": "excellent",
-                    "message": "No quality rules configured",
-                    "calculation_basis": "No rules",
-                }
-
-            # Calculate pass rate for each rule
-            total_score = 0.0
-            rule_scores = {}
-
-            for rule in active_rules:
-                # Get recent results
-                results_query = select(DataQualityResult).where(
-                    and_(
-                        DataQualityResult.rule_id == rule.id,
-                        DataQualityResult.execution_timestamp >= cutoff_date,
-                    )
-                ).order_by(desc(DataQualityResult.execution_timestamp)).limit(10)
-
-                results_result = await db.execute(results_query)
-                results = results_result.scalars().all()
-
-                if not results:
-                    # No recent results = neutral (50%)
-                    rule_score = 50.0
-                else:
-                    # Calculate pass rate from results
-                    passed = sum(1 for r in results if r.status == "passed")
-                    pass_rate = (passed / len(results)) * 100 if results else 0
-                    
-                    # Apply severity weight
-                    severity_weight = {
-                        "low": 0.5,
-                        "medium": 1.0,
-                        "high": 1.5,
-                        "critical": 2.0,
-                    }.get(rule.severity.value, 1.0)
-                    
-                    # Score = pass_rate adjusted by severity
-                    rule_score = pass_rate / (severity_weight if severity_weight > 0 else 1)
-
-                total_score += rule_score
-                rule_scores[str(rule.id)] = {
-                    "rule_name": rule.name,
-                    "pass_rate": pass_rate if results else None,
-                    "recent_results": len(results),
-                }
-
-            # Average score
-            health_score = total_score / len(active_rules) if active_rules else 100.0
-            health_score = min(100.0, max(0.0, health_score))  # Clamp to 0-100
-
-            # Determine status
-            if health_score >= 95:
-                status = "excellent"
-            elif health_score >= 85:
-                status = "good"
-            elif health_score >= 70:
-                status = "fair"
-            elif health_score >= 50:
-                status = "poor"
-            else:
-                status = "critical"
-
-            return {
-                "health_score": round(health_score, 1),
-                "status": status,
-                "active_rules": len(active_rules),
-                "calculation_basis": f"Last {days} days",
-                "rule_scores": rule_scores,
-            }
-
-        except Exception as e:
-            logger.error(f"Error calculating health score: {str(e)}")
+            .where(DatasetVersion.quality_score.is_not(None), *conditions)
+            .subquery()
+        )
+        rows = (await db.execute(select(latest.c.quality_score).where(latest.c.rn == 1))).scalars().all()
+        if not rows:
             return {
                 "health_score": None,
-                "status": "unknown",
-                "error": str(e),
+                "status": "no_data",
+                "scanned_datasets": 0,
+                "calculation_basis": "No scanned datasets",
             }
+        score = sum(rows) / len(rows)
+        return {
+            "health_score": round(score, 1),
+            "status": QualityAnalyticsService._status_for(score),
+            "scanned_datasets": len(rows),
+            "calculation_basis": "Average quality score of the latest scanned version of each dataset",
+        }
 
     @staticmethod
     async def quality_by_dimension(
         db: AsyncSession,
         dataset_id: UUID = None,
         days: int = 30,
+        user=None,
     ) -> dict:
-        """Calculate quality metrics by dimension (accuracy, completeness, etc.)"""
-        try:
-            now = datetime.now(timezone.utc)
-            cutoff_date = now - timedelta(days=days)
+        """Per dimension: the average share of records that passed each
+        active check, using every check's most recent result in the window.
 
-            results = {}
+        Uses records_passed / records_checked (what fraction of the data is
+        fine), not whether the run as a whole passed - automatic checks only
+        exist while they find a problem, so a run-level pass rate would be 0
+        for every one of them.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        rule_conditions = [DataQualityRule.status == RuleStatus.ACTIVE]
+        if user is not None:
+            rule_conditions.append(visible_rules_clause(user))
+        if dataset_id:
+            rule_conditions.append(DataQualityRule.dataset_id == dataset_id)
 
-            # Get all dimensions
-            for dimension in DataQualityDimension:
-                # Get rules for this dimension
-                query = select(DataQualityRule).where(
-                    and_(
-                        DataQualityRule.dimension == dimension,
-                        DataQualityRule.status == RuleStatus.ACTIVE,
-                    )
-                )
-                
-                if dataset_id:
-                    query = query.where(DataQualityRule.dataset_id == dataset_id)
+        latest = (
+            select(
+                DataQualityResult.rule_id,
+                DataQualityResult.records_checked,
+                DataQualityResult.records_passed,
+                func.row_number().over(
+                    partition_by=DataQualityResult.rule_id,
+                    order_by=DataQualityResult.execution_timestamp.desc(),
+                ).label("rn"),
+            )
+            .where(DataQualityResult.execution_timestamp >= cutoff)
+            .subquery()
+        )
+        rows = (
+            await db.execute(
+                select(DataQualityRule.dimension, latest.c.records_checked, latest.c.records_passed)
+                .select_from(DataQualityRule)
+                .outerjoin(latest, and_(latest.c.rule_id == DataQualityRule.id, latest.c.rn == 1))
+                .where(*rule_conditions)
+            )
+        ).all()
 
-                rule_result = await db.execute(query)
-                rules = rule_result.scalars().all()
+        per_dimension: dict = {}
+        for dimension, checked, passed in rows:
+            entry = per_dimension.setdefault(dimension, {"rates": [], "rule_count": 0})
+            entry["rule_count"] += 1
+            if checked:
+                entry["rates"].append((passed or 0) / checked * 100)
 
-                if not rules:
-                    results[dimension.value] = {
-                        "score": None,
-                        "status": "no_rules",
-                        "rule_count": 0,
-                    }
-                    continue
-
-                # Calculate average pass rate for rules in this dimension
-                total_pass_rate = 0.0
-                rule_count = 0
-
-                for rule in rules:
-                    res_query = select(DataQualityResult).where(
-                        and_(
-                            DataQualityResult.rule_id == rule.id,
-                            DataQualityResult.execution_timestamp >= cutoff_date,
-                        )
-                    ).order_by(desc(DataQualityResult.execution_timestamp)).limit(5)
-
-                    res_result = await db.execute(res_query)
-                    dim_results = res_result.scalars().all()
-
-                    if dim_results:
-                        passed = sum(1 for r in dim_results if r.status == "passed")
-                        pass_rate = (passed / len(dim_results)) * 100
-                        total_pass_rate += pass_rate
-                        rule_count += 1
-
-                score = (total_pass_rate / rule_count) if rule_count > 0 else None
-
-                if score is not None:
-                    if score >= 95:
-                        status = "excellent"
-                    elif score >= 85:
-                        status = "good"
-                    elif score >= 70:
-                        status = "fair"
-                    else:
-                        status = "poor"
-                else:
-                    status = "no_data"
-
-                results[dimension.value] = {
-                    "score": round(score, 1) if score is not None else None,
-                    "status": status,
-                    "rule_count": len(rules),
-                }
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Error calculating dimension scores: {str(e)}")
-            return {}
+        results = {}
+        for dimension in DataQualityDimension:
+            entry = per_dimension.get(dimension)
+            if entry is None:
+                results[dimension.value] = {"score": None, "status": "no_rules", "rule_count": 0}
+                continue
+            score = sum(entry["rates"]) / len(entry["rates"]) if entry["rates"] else None
+            results[dimension.value] = {
+                "score": round(score, 1) if score is not None else None,
+                "status": QualityAnalyticsService._status_for(score) if score is not None else "no_data",
+                "rule_count": entry["rule_count"],
+            }
+        return results
 
     @staticmethod
     async def quality_trends(
         db: AsyncSession,
         dataset_id: UUID = None,
         days: int = 30,
+        user=None,
     ) -> dict:
-        """Calculate quality trends over time"""
-        try:
-            now = datetime.now(timezone.utc)
-            cutoff_date = now - timedelta(days=days)
-
-            # Get check runs for this period
-            query = select(QualityCheckRun).where(
-                QualityCheckRun.check_timestamp >= cutoff_date
+        """Daily average dataset quality score of the scans run in the
+        window, and whether it went up or down. Only scans that recorded a
+        quality score count (runs from before scores were recorded only
+        have a check pass rate, a different measure that must not be mixed
+        into the same line)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        conditions = QualityAnalyticsService._dataset_conditions(QualityCheckRun.dataset_id, user, dataset_id)
+        runs = (
+            await db.execute(
+                select(QualityCheckRun.check_timestamp, QualityCheckRun.quality_score)
+                .where(
+                    QualityCheckRun.check_timestamp >= cutoff,
+                    QualityCheckRun.quality_score.is_not(None),
+                    *conditions,
+                )
+                .order_by(QualityCheckRun.check_timestamp)
             )
-            
-            if dataset_id:
-                query = query.where(QualityCheckRun.dataset_id == dataset_id)
+        ).all()
 
-            query = query.order_by(QualityCheckRun.check_timestamp)
-            result = await db.execute(query)
-            check_runs = result.scalars().all()
+        by_day: dict[str, list[float]] = {}
+        for timestamp, score in runs:
+            by_day.setdefault(timestamp.date().isoformat(), []).append(score)
+        daily = [
+            {"date": day, "pass_rate": round(sum(scores) / len(scores), 1), "total_runs": len(scores)}
+            for day, scores in sorted(by_day.items())
+        ]
 
-            # Group by day
-            daily_stats = {}
-            for check_run in check_runs:
-                date_key = check_run.check_timestamp.date().isoformat()
-                
-                if date_key not in daily_stats:
-                    daily_stats[date_key] = {
-                        "total_runs": 0,
-                        "total_passed": 0,
-                        "total_failed": 0,
-                        "pass_rate": 0.0,
-                    }
+        trend = "stable"
+        if len(daily) >= 2:
+            half = len(daily) // 2
+            first = sum(d["pass_rate"] for d in daily[:half]) / half
+            second = sum(d["pass_rate"] for d in daily[half:]) / (len(daily) - half)
+            if second > first + 2:
+                trend = "improving"
+            elif second < first - 2:
+                trend = "degrading"
+        elif not daily:
+            trend = "unknown"
 
-                daily_stats[date_key]["total_runs"] += 1
-                if check_run.overall_pass_rate:
-                    daily_stats[date_key]["total_passed"] += check_run.overall_pass_rate / 100
-                    daily_stats[date_key]["total_failed"] += (100 - check_run.overall_pass_rate) / 100
-
-            # Calculate daily averages
-            daily_trends = []
-            for date_key in sorted(daily_stats.keys()):
-                stats = daily_stats[date_key]
-                if stats["total_runs"] > 0:
-                    pass_rate = (stats["total_passed"] / stats["total_runs"]) * 100
-                else:
-                    pass_rate = 0.0
-
-                daily_trends.append({
-                    "date": date_key,
-                    "pass_rate": round(pass_rate, 1),
-                    "total_runs": stats["total_runs"],
-                })
-
-            # Determine trend direction
-            trend = "stable"
-            if len(daily_trends) >= 2:
-                first_half = sum(t["pass_rate"] for t in daily_trends[:len(daily_trends)//2]) / (len(daily_trends)//2 + 1)
-                second_half = sum(t["pass_rate"] for t in daily_trends[len(daily_trends)//2:]) / (len(daily_trends) - len(daily_trends)//2 + 1)
-                
-                if second_half > first_half + 2:
-                    trend = "improving"
-                elif second_half < first_half - 2:
-                    trend = "degrading"
-
-            return {
-                "trend": trend,
-                "period_days": days,
-                "total_check_runs": len(check_runs),
-                "daily_data": daily_trends,
-            }
-
-        except Exception as e:
-            logger.error(f"Error calculating trends: {str(e)}")
-            return {
-                "trend": "unknown",
-                "error": str(e),
-            }
+        return {"trend": trend, "period_days": days, "total_check_runs": len(runs), "daily_data": daily}
 
     @staticmethod
     async def issue_analytics(
         db: AsyncSession,
         dataset_id: UUID = None,
+        user=None,
     ) -> dict:
-        """Analyze quality issues"""
-        try:
-            # Get issues by status
-            query = select(QualityIssue).where(QualityIssue.status == IssueStatus.OPEN)
-            if dataset_id:
-                query = query.where(QualityIssue.dataset_id == dataset_id)
-
-            result = await db.execute(query)
-            open_issues = result.scalars().all()
-
-            # Count by severity
-            severity_counts = {
-                IssueSeverity.CRITICAL.value: 0,
-                IssueSeverity.HIGH.value: 0,
-                IssueSeverity.MEDIUM.value: 0,
-                IssueSeverity.LOW.value: 0,
-            }
-
-            for issue in open_issues:
-                severity_counts[issue.severity.value] += 1
-
-            # Get in-progress issues
-            in_progress_query = select(QualityIssue).where(
-                QualityIssue.status == IssueStatus.IN_PROGRESS
+        """Counts of open and in-progress issues in scope, by severity."""
+        conditions = QualityAnalyticsService._dataset_conditions(QualityIssue.dataset_id, user, dataset_id)
+        rows = (
+            await db.execute(
+                select(QualityIssue.status, QualityIssue.severity, func.count())
+                .where(QualityIssue.status.in_([IssueStatus.OPEN, IssueStatus.IN_PROGRESS]), *conditions)
+                .group_by(QualityIssue.status, QualityIssue.severity)
             )
-            if dataset_id:
-                in_progress_query = in_progress_query.where(QualityIssue.dataset_id == dataset_id)
-
-            in_progress_result = await db.execute(in_progress_query)
-            in_progress_issues = in_progress_result.scalars().all()
-
-            return {
-                "open_issues": len(open_issues),
-                "in_progress_issues": len(in_progress_issues),
-                "by_severity": severity_counts,
-                "critical_count": severity_counts[IssueSeverity.CRITICAL.value],
-                "high_count": severity_counts[IssueSeverity.HIGH.value],
-            }
-
-        except Exception as e:
-            logger.error(f"Error analyzing issues: {str(e)}")
-            return {"error": str(e)}
+        ).all()
+        severity_counts = {s.value: 0 for s in (IssueSeverity.CRITICAL, IssueSeverity.HIGH, IssueSeverity.MEDIUM, IssueSeverity.LOW)}
+        open_count = in_progress = 0
+        for status_, severity, count in rows:
+            if status_ == IssueStatus.OPEN:
+                open_count += count
+                severity_counts[severity.value] = severity_counts.get(severity.value, 0) + count
+            else:
+                in_progress += count
+        return {
+            "open_issues": open_count,
+            "in_progress_issues": in_progress,
+            "by_severity": severity_counts,
+            "critical_count": severity_counts[IssueSeverity.CRITICAL.value],
+            "high_count": severity_counts[IssueSeverity.HIGH.value],
+        }
 
     @staticmethod
     async def rule_effectiveness_summary(

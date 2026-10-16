@@ -109,3 +109,15 @@ def resolve_path(relative_path: str) -> Path:
 def delete_file(relative_path: str) -> None:
     path = resolve_path(relative_path)
     path.unlink(missing_ok=True)
+
+
+def remove_dataset_dir(dataset_id) -> None:
+    """Remove a dataset's (now empty) upload folder, if any."""
+    root = _upload_root().resolve()
+    folder = (root / str(dataset_id)).resolve()
+    if folder.parent != root or not folder.is_dir():
+        return
+    try:
+        folder.rmdir()  # only succeeds when empty - never deletes unknown files
+    except OSError:
+        pass

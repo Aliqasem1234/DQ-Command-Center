@@ -37,7 +37,7 @@ export function ProfilePage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-6">{t('nav.settings')}</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-6">{t('nav.myProfile')}</h1>
 
       {message && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
@@ -115,6 +115,67 @@ export function ProfilePage() {
           )}
         </div>
       </div>
+
     </div>
+  );
+}
+
+export function ChangePasswordCard() {
+  const { t } = useTranslation();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setMessage('');
+    if (next !== confirm) {
+      setError(t('auth.passwordsMustMatch'));
+      return;
+    }
+    setSaving(true);
+    try {
+      await authService.changePassword({ current_password: current, new_password: next });
+      setMessage(t('auth.passwordChanged'));
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="card-lg space-y-4" aria-labelledby="change-password-heading">
+      <h2 id="change-password-heading" className="text-xl font-semibold text-slate-900">{t('auth.changePassword')}</h2>
+      {message && <div className="alert alert-success text-sm" role="status">{message}</div>}
+      {error && <div className="alert alert-error text-sm whitespace-pre-line" role="alert">{error}</div>}
+      <div>
+        <label htmlFor="current-password" className="block text-sm font-medium text-slate-700 mb-1">{t('auth.currentPassword')}</label>
+        <input id="current-password" type="password" className="input-base" autoComplete="current-password"
+          value={current} onChange={(e) => setCurrent(e.target.value)} required />
+      </div>
+      <div>
+        <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 mb-1">{t('auth.newPassword')}</label>
+        <input id="new-password" type="password" className="input-base" autoComplete="new-password" minLength={8} maxLength={128}
+          value={next} onChange={(e) => setNext(e.target.value)} required />
+      </div>
+      <div>
+        <label htmlFor="confirm-new-password" className="block text-sm font-medium text-slate-700 mb-1">{t('auth.confirmPassword')}</label>
+        <input id="confirm-new-password" type="password" className="input-base" autoComplete="new-password" minLength={8} maxLength={128}
+          value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+      </div>
+      <div className="pt-2">
+        <button type="submit" disabled={saving} className="btn-primary">
+          {saving ? t('common.loading') : t('auth.changePassword')}
+        </button>
+      </div>
+    </form>
   );
 }

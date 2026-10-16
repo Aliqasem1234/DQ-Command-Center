@@ -12,7 +12,7 @@ export function NotFoundPage() {
       </h2>
       <RouterLink
         to="/dashboard"
-        className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+        className="btn-primary"
       >
         {t('common.goHome')}
       </RouterLink>

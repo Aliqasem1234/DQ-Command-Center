@@ -40,7 +40,9 @@ export interface QualityTrendPoint {
 }
 
 export interface DashboardHealthSummary {
-  health_score: number;
+  // null until at least one of the user's datasets has been scanned
+  health_score: number | null;
+  scanned_datasets?: number;
   status: string;
   dimensions: Record<string, DimensionScore>;
   open_issues: number;

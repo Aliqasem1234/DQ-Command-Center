@@ -4,12 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Shield, FileText } from 'lucide-react';
 import { governanceService } from '../../services/governanceService';
 import { domainService } from '../../services/domainService';
-import { userService } from '../../services/userService';
 import { getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import type { GovernanceAssignment, GovernancePolicy, GovernanceRole, GovernancePolicyStatus } from '../../types';
+import { usePermission } from '../../hooks/usePermission';
+import { PERMISSIONS } from '../../auth/permissions';
 
 type Section = 'assignments' | 'policies';
 
@@ -75,6 +76,7 @@ export function GovernancePage() {
 function AssignmentsSection() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const canManage = usePermission(PERMISSIONS.governanceManage);
   const { data, isLoading, error } = useQuery({
     queryKey: ['governance-assignments'],
     queryFn: () => governanceService.listAssignments(1, 100),
@@ -99,11 +101,13 @@ function AssignmentsSection() {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <button className="btn-primary flex items-center gap-2" onClick={() => setIsCreating(true)}>
-          <Plus size={18} /> {t('governance.assignRole')}
-        </button>
-      </div>
+      {canManage && (
+        <div className="flex justify-end mb-4">
+          <button className="btn-primary flex items-center gap-2" onClick={() => setIsCreating(true)}>
+            <Plus size={18} /> {t('governance.assignRole')}
+          </button>
+        </div>
+      )}
 
       {formError && <div className="alert alert-error mb-4">{formError}</div>}
 
@@ -118,9 +122,11 @@ function AssignmentsSection() {
             title={t('governance.noAssignmentsTitle')}
             message={t('governance.noAssignmentsMessage')}
             action={
-              <button className="btn-primary" onClick={() => setIsCreating(true)}>
-                {t('governance.assignRole')}
-              </button>
+              canManage ? (
+                <button className="btn-primary" onClick={() => setIsCreating(true)}>
+                  {t('governance.assignRole')}
+                </button>
+              ) : undefined
             }
           />
         ) : (
@@ -154,13 +160,15 @@ function AssignmentsSection() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded"
-                        onClick={() => setRevokeTarget(a)}
-                        title={t('governance.revoke')}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {canManage && (
+                        <button
+                          className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded"
+                          onClick={() => setRevokeTarget(a)}
+                          title={t('governance.revoke')}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -196,26 +204,32 @@ function AssignmentFormModal({ onCancel, onCreated }: { onCancel: () => void; on
   const [scopeType, setScopeType] = useState<'domain' | 'dataset'>('domain');
   const [scopeId, setScopeId] = useState('');
   const [role, setRole] = useState<GovernanceRole>('owner');
-  const [userId, setUserId] = useState('');
+  const [email, setEmail] = useState('');
   const [responsibility, setResponsibility] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: domains } = useQuery({ queryKey: ['domains'], queryFn: () => domainService.list(1, 50) });
   const { data: datasets } = useQuery({ queryKey: ['all-datasets'], queryFn: () => domainService.listAllDatasets() });
-  const { data: usersPage } = useQuery({ queryKey: ['users-for-governance'], queryFn: () => userService.list(1, 100) });
 
   const scopeOptions = scopeType === 'domain' ? (domains ?? []) : (datasets ?? []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scopeId || !userId) return;
+    if (!scopeId || !email.trim()) return;
     setSaving(true);
     setError(null);
     try {
+      // Sharing is by exact email address: you can only add someone whose
+      // address you already know (the API never lists registered users).
+      const target = await governanceService.findUserByEmail(email.trim());
+      if (!target) {
+        setError(t('governance.userNotFound'));
+        return;
+      }
       await governanceService.createAssignment({
         role,
-        user_id: userId,
+        user_id: target.id,
         domain_id: scopeType === 'domain' ? scopeId : null,
         dataset_id: scopeType === 'dataset' ? scopeId : null,
         responsibility_description: responsibility || undefined,
@@ -261,13 +275,18 @@ function AssignmentFormModal({ onCancel, onCreated }: { onCancel: () => void; on
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{t('governance.assignedTo')}</label>
-              <select className="input-base" value={userId} onChange={(e) => setUserId(e.target.value)} required>
-                <option value="" disabled>{t('governance.selectUser')}</option>
-                {(usersPage?.items ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
-                ))}
-              </select>
+              <label htmlFor="assign-email" className="block text-sm font-medium text-slate-700 mb-1">{t('governance.assignedTo')}</label>
+              <input
+                id="assign-email"
+                type="email"
+                className="input-base"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t('governance.assigneeEmailPlaceholder')}
+                autoComplete="off"
+                required
+              />
+              <p className="text-xs text-slate-500 mt-1">{t('governance.assigneeEmailHelp')}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">{t('governance.responsibility')}</label>
@@ -291,6 +310,7 @@ function AssignmentFormModal({ onCancel, onCreated }: { onCancel: () => void; on
 function PoliciesSection() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const canManage = usePermission(PERMISSIONS.governanceManage);
   const { data, isLoading, error } = useQuery({
     queryKey: ['governance-policies'],
     queryFn: () => governanceService.listPolicies(1, 100),
@@ -315,11 +335,13 @@ function PoliciesSection() {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <button className="btn-primary flex items-center gap-2" onClick={() => setIsCreating(true)}>
-          <Plus size={18} /> {t('governance.newPolicy')}
-        </button>
-      </div>
+      {canManage && (
+        <div className="flex justify-end mb-4">
+          <button className="btn-primary flex items-center gap-2" onClick={() => setIsCreating(true)}>
+            <Plus size={18} /> {t('governance.newPolicy')}
+          </button>
+        </div>
+      )}
 
       {formError && <div className="alert alert-error mb-4">{formError}</div>}
 
@@ -334,9 +356,11 @@ function PoliciesSection() {
             title={t('governance.noPoliciesTitle')}
             message={t('governance.noPoliciesMessage')}
             action={
-              <button className="btn-primary" onClick={() => setIsCreating(true)}>
-                {t('governance.newPolicy')}
-              </button>
+              canManage ? (
+                <button className="btn-primary" onClick={() => setIsCreating(true)}>
+                  {t('governance.newPolicy')}
+                </button>
+              ) : undefined
             }
           />
         ) : (
@@ -361,13 +385,15 @@ function PoliciesSection() {
                       <span className={`badge ${POLICY_STATUS_BADGE[p.status]} capitalize`}>{p.status}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded"
-                        onClick={() => setDeleteTarget(p)}
-                        title={t('common.delete')}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {canManage && (
+                        <button
+                          className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded"
+                          onClick={() => setDeleteTarget(p)}
+                          title={t('common.delete')}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

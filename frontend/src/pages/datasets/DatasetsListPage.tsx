@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, Database, ChevronRight, Plus } from 'lucide-react';
@@ -8,6 +8,8 @@ import { datasetFileService } from '../../services/datasetFileService';
 import { getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
+import { usePermission } from '../../hooks/usePermission';
+import { PERMISSIONS } from '../../auth/permissions';
 
 const NEW_DOMAIN_SENTINEL = '__new__';
 
@@ -15,6 +17,7 @@ export function DatasetsListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const canManage = usePermission(PERMISSIONS.datasetsManage);
 
   const { data: datasets, isLoading, error } = useQuery({
     queryKey: ['all-datasets'],
@@ -27,7 +30,11 @@ export function DatasetsListPage() {
   });
   const domainById = new Map((domains ?? []).map((d) => [d.id, d.name]));
 
-  const [isUploading, setIsUploading] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isUploading, setIsUploading] = useState(() => canManage && searchParams.get('upload') === '1');
+  useEffect(() => {
+    if (searchParams.has('upload')) setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -64,10 +71,12 @@ export function DatasetsListPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('datasets.title')}</h1>
           <p className="text-slate-600 text-sm mt-1">{t('datasets.subtitle')}</p>
         </div>
-        <button className="flex items-center gap-2 btn-primary" onClick={() => setIsUploading(true)}>
-          <Upload size={18} />
-          {t('datasets.uploadDataset')}
-        </button>
+        {canManage && (
+          <button className="flex items-center gap-2 btn-primary" onClick={() => setIsUploading(true)}>
+            <Upload size={18} />
+            {t('datasets.uploadDataset')}
+          </button>
+        )}
       </div>
 
       <div className="card-lg overflow-hidden">
@@ -81,9 +90,11 @@ export function DatasetsListPage() {
             title={t('datasets.noDatasetsTitle')}
             message={t('datasets.noDatasetsMessage')}
             action={
-              <button className="btn-primary" onClick={() => setIsUploading(true)}>
-                {t('datasets.uploadFirst')}
-              </button>
+              canManage ? (
+                <button className="btn-primary" onClick={() => setIsUploading(true)}>
+                  {t('datasets.uploadFirst')}
+                </button>
+              ) : undefined
             }
           />
         ) : (

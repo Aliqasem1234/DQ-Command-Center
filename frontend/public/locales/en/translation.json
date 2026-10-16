@@ -22,7 +22,16 @@
     "admin": "Admin",
     "logout": "Logout",
     "login": "Login",
-    "register": "Register"
+    "register": "Register",
+    "sectionOverview": "Overview",
+    "sectionDataQuality": "Data quality",
+    "sectionGovernance": "Data governance",
+    "sectionSettings": "Settings",
+    "activity": "Activity log",
+    "systemLog": "System log",
+    "myProfile": "My profile",
+    "security": "Security",
+    "rolesPermissions": "Roles & permissions"
   },
   "auth": {
     "login": "Sign In",
@@ -58,7 +67,7 @@
     "backToLogin": "Back to login",
     "redirecting": "Redirecting...",
     "loginSuccess": "Login successful",
-    "registerSuccess": "Registration successful. Please check your email.",
+    "registerSuccess": "Account created. You can now sign in.",
     "registrationFailed": "Registration failed",
     "logoutSuccess": "Logged out successfully",
     "passwordResetSent": "If the email exists, a reset link has been sent.",
@@ -201,7 +210,11 @@
     "statusCritical": "Critical",
     "statusFair": "Fair",
     "statusGood": "Good",
-    "statusExcellent": "Excellent"
+    "statusExcellent": "Excellent",
+    "welcomeTitle": "Welcome! Start with your first dataset",
+    "welcomeMessage": "Upload a CSV or Excel file. It is profiled right away, and once you scan it, quality issues, scores and trends appear here.",
+    "healthNoData": "Scan a dataset to get a health score.",
+    "qualityScoreLegend": "Quality score %"
   },
   "datasets": {
     "title": "Datasets",
@@ -290,7 +303,9 @@
       "normalize_dates": "Normalize date format",
       "remove_duplicate_rows": "Remove exact duplicate rows",
       "fill_missing": "Fill missing values"
-    }
+    },
+    "deleteDataset": "Delete dataset",
+    "deleteDatasetConfirm": "Permanently delete \"{{name}}\"? All versions, files, profiling, rules and issues for this dataset are removed. This cannot be undone."
   },
   "governance": {
     "title": "Governance",
@@ -324,13 +339,19 @@
     "selectUser": "Select a user",
     "selectScope": "Select what this applies to",
     "policyName": "Policy name",
-    "policyDescription": "Description"
+    "policyDescription": "Description",
+    "userNotFound": "No active user has that email address.",
+    "assigneeEmailPlaceholder": "colleague@example.com",
+    "assigneeEmailHelp": "Enter the exact email address of the person you want to share with. They get access to what you select above."
   },
   "audit": {
     "entityType": "Entity Type",
     "action": "Action",
     "timestamp": "Timestamp",
-    "entityId": "Entity ID"
+    "entityId": "Entity ID",
+    "mineSubtitle": "What you have done: uploads, cleaning, rules and changes.",
+    "systemSubtitle": "Every user's actions across the platform.",
+    "mineEmpty": "No activity yet. Uploads and changes you make will appear here."
   },
   "profile": {
     "title": "Profile",
@@ -338,7 +359,9 @@
     "superAdmin": "Super Admin"
   },
   "users": {
-    "deactivateConfirm": "Are you sure you want to deactivate this user?"
+    "deactivateConfirm": "Are you sure you want to deactivate this user?",
+    "editRoles": "Edit roles",
+    "deactivate": "Deactivate user"
   },
   "roles": {
     "deleteConfirm": "Are you sure you want to delete this role?",
@@ -373,7 +396,20 @@
     "deleteConfirm": "Are you sure you want to delete this rule?",
     "noMonitoringData": "Once quality rules are created for each dimension, monitoring data will appear here.",
     "healthy": "Healthy",
-    "warning": "Warning"
+    "warning": "Warning",
+    "noDataset": "None (the rule is not tied to a dataset)",
+    "severityLevel": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "statusValue": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "draft": "Draft",
+      "archived": "Archived"
+    }
   },
   "dimensions": {
     "accuracy": "Accuracy",
@@ -400,5 +436,49 @@
     "source": "Source",
     "steward": "Data Steward",
     "owner": "Data Owner"
+  },
+  "apiErrors": {
+    "network": "Could not reach the server. Check your connection and try again.",
+    "timeout": "The server took too long to respond. Please try again.",
+    "rateLimited": "Too many attempts. Please wait a minute and try again.",
+    "unauthorized": "Your session has expired. Please sign in again.",
+    "forbidden": "You don't have permission to do this.",
+    "notFound": "The requested item could not be found.",
+    "server": "Something went wrong on the server. Please try again later.",
+    "badRequest": "The request could not be processed. Check your input and try again.",
+    "invalidInput": "Please check your input and try again.",
+    "fieldRequired": "{{field}} is required.",
+    "fieldTooShort": "{{field}} must be at least {{min}} characters.",
+    "fieldTooLong": "{{field}} must be at most {{max}} characters.",
+    "fieldInvalid": "{{field}} is invalid.",
+    "invalidEmail": "Please enter a valid email address.",
+    "emailTaken": "This email address is already registered.",
+    "usernameTaken": "This username is already taken.",
+    "invalidCredentials": "Invalid email or password.",
+    "accountLocked": "The account is temporarily locked after too many failed attempts. Try again later.",
+    "accountDeactivated": "This account has been deactivated.",
+    "invalidResetToken": "The reset link is invalid or has expired.",
+    "invalidVerificationToken": "The verification link is invalid or has expired.",
+    "currentPasswordIncorrect": "The current password is incorrect.",
+    "cannotDeactivateSelf": "You cannot deactivate your own account.",
+    "superAdminOnly": "Only a super admin can do this.",
+    "systemRoleLocked": "System roles cannot be changed or deleted.",
+    "nameTaken": "That name is already in use.",
+    "datasetNameTaken": "A dataset with that name already exists.",
+    "fileTooLarge": "The file is too large.",
+    "unsupportedFile": "This file type isn't supported.",
+    "fileProcessing": "The file could not be read. Check that it is a valid CSV or Excel file."
+  },
+  "fields": {
+    "email": "Email",
+    "password": "Password",
+    "new_password": "New password",
+    "current_password": "Current password",
+    "full_name": "Full name",
+    "username": "Username",
+    "name": "Name",
+    "description": "Description",
+    "token": "Token",
+    "file": "File"
   }
 }

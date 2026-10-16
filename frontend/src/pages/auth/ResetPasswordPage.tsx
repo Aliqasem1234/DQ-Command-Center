@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Link as RouterLink, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 export function ResetPasswordPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
   const { resetPassword } = useAuth();
@@ -34,7 +35,8 @@ export function ResetPasswordPage() {
     setIsLoading(true);
     const result = await resetPassword(token, password);
     if (result.success) {
-      setMessage(result.message || t('auth.passwordResetSuccess'));
+      setMessage(t('auth.passwordResetSuccess'));
+      setTimeout(() => navigate('/login'), 2500);
     } else {
       setError(result.error || t('auth.resetFailed'));
     }
@@ -46,7 +48,7 @@ export function ResetPasswordPage() {
       <h2 className="text-xl font-bold text-slate-900 mb-6">{t('auth.resetPassword')}</h2>
 
       {error && (
-        <div className="alert alert-error text-sm">
+        <div className="alert alert-error text-sm whitespace-pre-line" role="alert">
           {error}
         </div>
       )}

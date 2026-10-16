@@ -6,10 +6,11 @@ import {
 } from 'recharts';
 import {
   AlertCircle, AlertTriangle, CheckCircle, Database, ShieldCheck,
-  TrendingUp, TrendingDown, Minus, RefreshCw,
+  TrendingUp, TrendingDown, Minus, RefreshCw, Upload,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { dashboardService } from '../../services/dashboardService';
-import { useThemeStore } from '../../store/themeStore';
+import { CHART_AXIS_COLOR, CHART_GRID_COLOR, CHART_TOOLTIP_STYLE } from '../../theme/chart';
 import { EmptyState } from '../../components/common/EmptyState';
 import type { DashboardHealthSummary, QualityIssueSummary } from '../../types';
 
@@ -52,8 +53,7 @@ function scoreTextColor(score: number) {
 
 export function DashboardPageModern() {
   const { t } = useTranslation();
-  const { mode } = useThemeStore();
-  const isDark = mode === 'dark';
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState<DashboardHealthSummary | null>(null);
   const [issues, setIssues] = useState<QualityIssueSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,11 +98,9 @@ export function DashboardPageModern() {
     );
   }
 
-  const axisColor = isDark ? '#64748b' : '#94a3b8';
-  const gridColor = isDark ? '#334155' : '#e2e8f0';
-  const tooltipStyle = isDark
-    ? { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f1f5f9', fontSize: '13px' }
-    : { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#0f172a', fontSize: '13px' };
+  const axisColor = CHART_AXIS_COLOR;
+  const gridColor = CHART_GRID_COLOR;
+  const tooltipStyle = CHART_TOOLTIP_STYLE;
 
   const TrendIcon = metrics ? TREND_ICON[metrics.recent_trend] ?? Minus : Minus;
   const trendColor = metrics?.recent_trend === 'improving' ? 'text-green-600 dark:text-green-400'
@@ -133,8 +131,26 @@ export function DashboardPageModern() {
         </div>
       )}
 
+      {/* First run: nothing to summarise yet. Every figure below is the
+          user's own data, so with no datasets there is nothing to show. */}
+      {metrics && metrics.total_datasets === 0 && (
+        <div className="card-lg">
+          <EmptyState
+            icon={<Database size={40} />}
+            title={t('dashboard.welcomeTitle')}
+            message={t('dashboard.welcomeMessage')}
+            action={
+              <button className="btn-primary flex items-center gap-2" onClick={() => navigate('/datasets?upload=1')}>
+                <Upload size={16} />
+                {t('datasets.uploadFirst')}
+              </button>
+            }
+          />
+        </div>
+      )}
+
       {/* Top Metrics */}
-      {metrics && (
+      {metrics && metrics.total_datasets > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
           {/* Overall Health Score - the only card with a real historical
               trend behind it, so it's the only one that earns a sparkline. */}
@@ -160,12 +176,23 @@ export function DashboardPageModern() {
               )}
             </div>
             <p className="text-slate-500 text-sm font-medium mt-3">{t('dashboard.overallHealth')}</p>
-            <p className={`text-3xl font-bold mt-0.5 ${scoreTextColor(metrics.health_score)}`}>
-              {Math.round(metrics.health_score)}%
-            </p>
-            <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-              {t('dashboard.statusLabel', { status: t(STATUS_KEY[metrics.status] ?? 'dashboard.statusFair') })}
-            </p>
+            {metrics.health_score === null ? (
+              <>
+                <p className="text-3xl font-bold mt-0.5 text-slate-400">—</p>
+                <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  {t('dashboard.healthNoData')}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className={`text-3xl font-bold mt-0.5 ${scoreTextColor(metrics.health_score)}`}>
+                  {Math.round(metrics.health_score)}%
+                </p>
+                <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  {t('dashboard.statusLabel', { status: t(STATUS_KEY[metrics.status] ?? 'dashboard.statusFair') })}
+                </p>
+              </>
+            )}
           </div>
 
           {/* Open Issues */}
@@ -206,6 +233,8 @@ export function DashboardPageModern() {
         </div>
       )}
 
+      {metrics && metrics.total_datasets > 0 && (
+      <>
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
         {/* Quality Trend */}
@@ -242,7 +271,7 @@ export function DashboardPageModern() {
                   strokeWidth={2.5}
                   dot={false}
                   activeDot={{ r: 5 }}
-                  name={t('dashboard.passRateLegend')}
+                  name={t('dashboard.qualityScoreLegend')}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -350,6 +379,8 @@ export function DashboardPageModern() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

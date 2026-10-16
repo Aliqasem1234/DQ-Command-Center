@@ -25,6 +25,7 @@ from app.schemas.dataset_upload import (
 )
 from app.services import dataset_upload_service, file_storage_service
 from app.services.file_storage_service import UploadValidationError
+from app.core.dataset_access import get_accessible_dataset, get_visible_domain
 from app.services.dataset_upload_service import DatasetProcessingError
 from app.services.profiling_service import profile_dataset_version
 from app.services.quality_discovery_service import scan_dataset_version
@@ -75,6 +76,8 @@ async def upload_new_dataset(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid domain_id")
 
+    if parsed_domain_id is not None:
+        await get_visible_domain(db, parsed_domain_id, current_user)
     try:
         version = await dataset_upload_service.create_dataset_from_upload(
             db, parsed_domain_id, name, description, file, current_user.id
@@ -97,9 +100,7 @@ async def upload_new_version(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:manage")),
 ):
-    dataset = await dataset_upload_service.get_dataset_or_404(db, dataset_id)
-    if dataset is None:
-        raise HTTPException(status_code=404, detail="Dataset not found")
+    dataset = await get_accessible_dataset(db, dataset_id, current_user)
     try:
         version = await dataset_upload_service.add_version_from_upload(db, dataset, file, current_user.id)
     except UploadValidationError as e:
@@ -117,6 +118,7 @@ async def list_versions(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:view")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     result = await db.execute(
         select(DatasetVersion)
         .options(selectinload(DatasetVersion.created_by))
@@ -134,6 +136,7 @@ async def get_version(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:view")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     version = await _get_version_with_creator(db, dataset_id, version_id)
     return _version_to_response(version)
 
@@ -148,6 +151,7 @@ async def preview_rows(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:view")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version not found")
@@ -172,6 +176,7 @@ async def reprofile_version(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:manage")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version not found")
@@ -189,6 +194,7 @@ async def scan_version(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:manage")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version not found")
@@ -207,6 +213,7 @@ async def preview_cleaning(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:manage")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version not found")
@@ -226,10 +233,10 @@ async def apply_cleaning(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:manage")),
 ):
-    dataset = await dataset_upload_service.get_dataset_or_404(db, dataset_id)
+    dataset = await get_accessible_dataset(db, dataset_id, current_user)
     version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
-    if dataset is None or version is None:
-        raise HTTPException(status_code=404, detail="Dataset or version not found")
+    if version is None:
+        raise HTTPException(status_code=404, detail="Dataset version not found")
     try:
         operations = [op.model_dump(exclude_none=True) for op in body.operations]
         new_version = await dataset_upload_service.apply_cleaning(db, dataset, version, operations, current_user.id)
@@ -247,6 +254,7 @@ async def download_version(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:view")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version not found")
@@ -265,6 +273,7 @@ async def quality_comparison(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("datasets:view")),
 ):
+    await get_accessible_dataset(db, dataset_id, current_user)
     versions = await dataset_upload_service.list_versions(db, dataset_id)
     return QualityComparisonResponse(
         dataset_id=dataset_id,

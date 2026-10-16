@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy import select, desc, func, and_
+from sqlalchemy import true, select, desc, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +19,7 @@ from app.schemas.data_quality_rule import (
     DataQualityMetrics,
 )
 from app.utils.audit_logger import log_audit_action
+from app.core.dataset_access import visible_rules_clause
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class DataQualityService:
                 severity=data.severity,
                 status=data.status,
                 rule_definition=data.rule_definition,
+                dataset_id=data.dataset_id,
                 owner_id=data.owner_id,
                 created_by_id=current_user_id,
                 is_active=data.is_active,
@@ -205,11 +207,15 @@ class DataQualityService:
         status: str = None,
         page: int = 1,
         page_size: int = 10,
+        user=None,
     ) -> tuple[list[DataQualityRule], int]:
-        """List data quality rules with filtering"""
+        """List data quality rules with filtering (only rules on datasets
+        `user` may access, plus rules not tied to any dataset)"""
         query = select(DataQualityRule).options(
             selectinload(DataQualityRule.owner), selectinload(DataQualityRule.created_by)
         )
+        if user is not None:
+            query = query.where(visible_rules_clause(user))
 
         if dimension:
             try:
@@ -298,26 +304,28 @@ class DataQualityService:
         return results, total
 
     @staticmethod
-    async def calculate_metrics(db: AsyncSession) -> DataQualityMetrics:
-        """Calculate overall data quality metrics"""
+    async def calculate_metrics(db: AsyncSession, user=None) -> DataQualityMetrics:
+        """Data quality metrics over the rules (and their results) `user` may see"""
+        rule_scope = visible_rules_clause(user) if user is not None else true()
+        result_scope = DataQualityResult.rule_id.in_(select(DataQualityRule.id).where(rule_scope))
         try:
             now = datetime.now(timezone.utc)
 
             # Count rules by status
             total_rules_result = await db.execute(
-                select(func.count(DataQualityRule.id))
+                select(func.count(DataQualityRule.id)).where(rule_scope)
             )
             total_rules = total_rules_result.scalar() or 0
 
             active_rules_result = await db.execute(
-                select(func.count(DataQualityRule.id)).where(
+                select(func.count(DataQualityRule.id)).where(rule_scope).where(
                     DataQualityRule.status == RuleStatus.ACTIVE
                 )
             )
             active_rules = active_rules_result.scalar() or 0
 
             draft_rules_result = await db.execute(
-                select(func.count(DataQualityRule.id)).where(
+                select(func.count(DataQualityRule.id)).where(rule_scope).where(
                     DataQualityRule.status == RuleStatus.DRAFT
                 )
             )
@@ -325,26 +333,26 @@ class DataQualityService:
 
             # Count results
             total_results_result = await db.execute(
-                select(func.count(DataQualityResult.id))
+                select(func.count(DataQualityResult.id)).where(result_scope)
             )
             total_results = total_results_result.scalar() or 0
 
             passed_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(result_scope).where(
                     DataQualityResult.status == "passed"
                 )
             )
             results_passed = passed_result.scalar() or 0
 
             failed_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(result_scope).where(
                     DataQualityResult.status == "failed"
                 )
             )
             results_failed = failed_result.scalar() or 0
 
             error_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(result_scope).where(
                     DataQualityResult.status == "error"
                 )
             )
@@ -359,14 +367,14 @@ class DataQualityService:
             dimension_stats = []
             for dimension in DataQualityDimension:
                 rules_result = await db.execute(
-                    select(func.count(DataQualityRule.id)).where(
+                    select(func.count(DataQualityRule.id)).where(rule_scope).where(
                         DataQualityRule.dimension == dimension
                     )
                 )
                 total_dim_rules = rules_result.scalar() or 0
 
                 active_dim_result = await db.execute(
-                    select(func.count(DataQualityRule.id)).where(
+                    select(func.count(DataQualityRule.id)).where(rule_scope).where(
                         and_(
                             DataQualityRule.dimension == dimension,
                             DataQualityRule.status == RuleStatus.ACTIVE,
@@ -377,7 +385,7 @@ class DataQualityService:
 
                 # Get passed results for this dimension
                 passed_dim_result = await db.execute(
-                    select(func.count(DataQualityResult.id)).where(
+                    select(func.count(DataQualityResult.id)).where(result_scope).where(
                         and_(
                             DataQualityResult.status == "passed",
                             DataQualityResult.rule_id.in_(
@@ -392,7 +400,7 @@ class DataQualityService:
 
                 # Get failed results for this dimension
                 failed_dim_result = await db.execute(
-                    select(func.count(DataQualityResult.id)).where(
+                    select(func.count(DataQualityResult.id)).where(result_scope).where(
                         and_(
                             DataQualityResult.status == "failed",
                             DataQualityResult.rule_id.in_(
@@ -407,7 +415,7 @@ class DataQualityService:
 
                 # Get last execution for this dimension
                 last_execution_result = await db.execute(
-                    select(func.max(DataQualityResult.execution_timestamp)).where(
+                    select(func.max(DataQualityResult.execution_timestamp)).where(result_scope).where(
                         DataQualityResult.rule_id.in_(
                             select(DataQualityRule.id).where(
                                 DataQualityRule.dimension == dimension

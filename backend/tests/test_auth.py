@@ -304,3 +304,102 @@ async def test_jwt_token():
     assert payload is not None
     assert payload["sub"] == str(user_id)
     assert payload["type"] == "access"
+
+
+# ---------- registration regressions (QA register: QA-003) ----------
+
+@pytest.mark.asyncio
+async def test_register_without_username_derives_unique_one(client: AsyncClient):
+    """The form doesn't collect a username, so short and shared email
+    local-parts must not fail on a field the user never saw."""
+    for email in ["ab@example.com", "ab@other.example", "anna@example.com", "anna@other.example"]:
+        r = await client.post("/api/v1/auth/register", json={
+            "email": email, "password": "ValidPass123!", "full_name": "Test",
+        })
+        assert r.status_code == 201, f"{email}: {r.text}"
+
+
+@pytest.mark.asyncio
+async def test_register_validation_errors_keep_fastapi_contract(client: AsyncClient):
+    """The frontend maps these into readable messages; they must stay a
+    list of {loc, msg, type} objects (rendering one raw crashed React)."""
+    r = await client.post("/api/v1/auth/register", json={
+        "email": "not-an-email", "password": "short", "full_name": "   ",
+    })
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert isinstance(detail, list)
+    fields = {e["loc"][-1] for e in detail}
+    assert {"email", "password", "full_name"} <= fields
+    assert all(isinstance(e["msg"], str) and isinstance(e["type"], str) for e in detail)
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_email_is_readable_string(client: AsyncClient):
+    body = {"email": "dupe@example.com", "password": "ValidPass123!", "full_name": "Dupe"}
+    assert (await client.post("/api/v1/auth/register", json=body)).status_code == 201
+    r = await client.post("/api/v1/auth/register", json=body)
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Email already registered"}
+
+
+@pytest.mark.asyncio
+async def test_login_nonexistent_and_wrong_password_are_indistinguishable(client: AsyncClient):
+    await client.post("/api/v1/auth/register", json={
+        "email": "real@example.com", "password": "ValidPass123!", "full_name": "Real",
+    })
+    wrong = await client.post("/api/v1/auth/login", json={"email": "real@example.com", "password": "WrongPass123!"})
+    missing = await client.post("/api/v1/auth/login", json={"email": "ghost@example.com", "password": "WrongPass123!"})
+    assert wrong.status_code == missing.status_code == 401
+    assert wrong.json() == missing.json()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_ends_existing_sessions(client: AsyncClient):
+    """Resetting a password must revoke sessions opened with the old one."""
+    email = "reset.sessions@example.com"
+    await client.post("/api/v1/auth/register", json={"email": email, "password": "ValidPass123!", "full_name": "R"})
+    old_refresh = (await client.post("/api/v1/auth/login", json={"email": email, "password": "ValidPass123!"})).json()["refresh_token"]
+
+    forgot = await client.post("/api/v1/auth/forgot-password", json={"email": email})
+    token = forgot.json()["detail"].split(": ", 1)[1]
+    assert (await client.post("/api/v1/auth/reset-password", json={"token": token, "password": "NewValid456!"})).status_code == 200
+
+    assert (await client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})).status_code == 401
+    assert (await client.post("/api/v1/auth/login", json={"email": email, "password": "ValidPass123!"})).status_code == 401
+    assert (await client.post("/api/v1/auth/login", json={"email": email, "password": "NewValid456!"})).status_code == 200
+    # The reset link is single-use.
+    assert (await client.post("/api/v1/auth/reset-password", json={"token": token, "password": "Another789!"})).status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reset_and_verification_tokens_are_not_echoed_by_default(client: AsyncClient, monkeypatch):
+    """Echoing the reset token lets any caller reset any account; it must
+    require the explicit local-only flag, not merely ENVIRONMENT=development."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "DEV_EXPOSE_AUTH_TOKENS", False)
+    r = await client.post("/api/v1/auth/register", json={"email": "victim@example.com", "password": "ValidPass123!", "full_name": "V"})
+    assert r.status_code == 201 and r.json()["detail"] is None
+    r = await client.post("/api/v1/auth/forgot-password", json={"email": "victim@example.com"})
+    assert r.status_code == 200 and r.json()["detail"] is None
+
+
+@pytest.mark.asyncio
+async def test_health_reports_unhealthy_when_database_is_unreachable(client: AsyncClient):
+    """Container health checks rely on /health; it must fail when the DB does."""
+    from app.main import app
+    from app.database import get_db
+
+    class BrokenSession:
+        async def execute(self, *args, **kwargs):
+            raise ConnectionRefusedError("database down")
+
+    async def broken_db():
+        yield BrokenSession()
+
+    app.dependency_overrides[get_db] = broken_db
+    response = await client.get("/health")
+    assert response.status_code == 503
+    assert response.json()["status"] == "unhealthy"
+    assert response.json()["database"] == "unreachable"

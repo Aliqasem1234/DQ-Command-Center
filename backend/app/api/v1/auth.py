@@ -53,7 +53,7 @@ async def register(
         )
         return MessageResponse(
             message="Registration successful. Please check your email to verify your account.",
-            detail=f"Verification token: {token}" if settings.ENVIRONMENT == "development" else None,
+            detail=f"Verification token: {token}" if settings.expose_auth_tokens else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -138,7 +138,7 @@ async def forgot_password(
     token = await auth_service.forgot_password(db, body.email)
     return MessageResponse(
         message="If the email exists, a password reset link has been sent.",
-        detail=f"Reset token: {token}" if settings.ENVIRONMENT == "development" and token else None,
+        detail=f"Reset token: {token}" if settings.expose_auth_tokens and token else None,
     )
 
 

@@ -18,10 +18,118 @@ from app.schemas.data_governance import (
     GovernancePolicyListResponse,
 )
 from app.services.governance_service import GovernanceService
+from app.core.dataset_access import (
+    get_accessible_dataset, get_visible_domain, has_global_dataset_access,
+    accessible_dataset_ids, visible_domains_clause, owned_dataset_ids,
+)
+from app.models.data_hierarchy import Dataset, DataElement, DataDomain, DataGovernance, GovernancePolicy
+from sqlalchemy import select, func, or_, and_, true
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/governance", tags=["Data Governance"])
+
+
+@router.get(
+    "/assignable-users",
+    summary="Look up one active user by exact email address, to share data with them",
+)
+async def find_assignable_user(
+    email: str = Query(..., min_length=3, max_length=255),
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_permission("data_governance:manage")),
+) -> list[dict]:
+    # Anyone can register, so listing every account would hand any user the
+    # full list of registered people and their emails. Sharing works by
+    # exact email instead: you can only find someone whose address you
+    # already know.
+    result = await db.execute(
+        select(User.id, User.full_name, User.email)
+        .where(User.is_active.is_(True), func.lower(User.email) == email.strip().lower())
+    )
+    return [{"id": str(r.id), "full_name": r.full_name, "email": r.email} for r in result.all()]
+
+
+def _managed_assignments_clause(user: User):
+    """Assignments on data the user controls: their datasets (or elements
+    of them) and their own domains."""
+    if has_global_dataset_access(user):
+        return true()
+    # Ownership, not access: someone a dataset was shared with must not be
+    # able to revoke the owner's sharing or re-share it onwards.
+    owned = owned_dataset_ids(user)
+    return or_(
+        DataGovernance.dataset_id.in_(owned),
+        DataGovernance.domain_id.in_(select(DataDomain.id).where(visible_domains_clause(user))),
+        DataGovernance.element_id.in_(select(DataElement.id).where(DataElement.dataset_id.in_(owned))),
+    )
+
+
+def _visible_assignments_clause(user: User):
+    # ...plus assignments that name the user, so people can see what has
+    # been shared with them.
+    if has_global_dataset_access(user):
+        return true()
+    return or_(_managed_assignments_clause(user), DataGovernance.user_id == user.id)
+
+
+def _visible_policies_clause(user: User):
+    if has_global_dataset_access(user):
+        return true()
+    return or_(
+        GovernancePolicy.dataset_id.in_(accessible_dataset_ids(user)),
+        GovernancePolicy.domain_id.in_(select(DataDomain.id).where(visible_domains_clause(user))),
+        and_(GovernancePolicy.dataset_id.is_(None), GovernancePolicy.domain_id.is_(None),
+             GovernancePolicy.created_by_id == user.id),
+    )
+
+
+async def _ensure_target_owned(db: AsyncSession, data, user: User) -> None:
+    """Only the owner of a dataset (or of the element's dataset) may share it."""
+    dataset_id = getattr(data, "dataset_id", None)
+    element_id = getattr(data, "element_id", None)
+    if dataset_id is None and element_id is not None:
+        dataset_id = (await db.execute(select(DataElement.dataset_id).where(DataElement.id == element_id))).scalar()
+    if dataset_id is None:
+        return
+    owned = await db.execute(select(Dataset.id).where(Dataset.id == dataset_id, Dataset.id.in_(owned_dataset_ids(user))))
+    if owned.first() is None:
+        raise HTTPException(status_code=403, detail="Only the dataset owner can share it")
+
+
+async def _ensure_assignment_managed(db: AsyncSession, assignment_id: UUID, user: User) -> None:
+    found = await db.execute(
+        select(DataGovernance.id).where(DataGovernance.id == assignment_id, _managed_assignments_clause(user))
+    )
+    if found.first() is None:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+
+async def _ensure_policy_visible(db: AsyncSession, policy_id: UUID, user: User) -> None:
+    found = await db.execute(
+        select(GovernancePolicy.id).where(GovernancePolicy.id == policy_id, _visible_policies_clause(user))
+    )
+    if found.first() is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+
+async def _ensure_target_dataset_access(db: AsyncSession, data, user: User) -> None:
+    # Assigning someone as owner/steward of a dataset grants them access to
+    # it, so only those who can already access the dataset may do so -
+    # otherwise data_governance:manage would let a user claim any dataset.
+    dataset_id = getattr(data, "dataset_id", None)
+    element_id = getattr(data, "element_id", None)
+    if dataset_id is None and element_id is not None:
+        element = (await db.execute(select(DataElement).where(DataElement.id == element_id))).scalar_one_or_none()
+        if element is None:
+            raise HTTPException(status_code=404, detail="Element not found")
+        dataset_id = element.dataset_id
+    if dataset_id is not None:
+        await get_accessible_dataset(db, dataset_id, user)
+    domain_id = getattr(data, "domain_id", None)
+    if domain_id is not None:
+        await get_visible_domain(db, domain_id, user)
 
 
 def _assignment_to_response(assignment) -> dict:
@@ -71,6 +179,8 @@ async def create_assignment(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
+    await _ensure_target_dataset_access(db, data, current_user)
+    await _ensure_target_owned(db, data, current_user)
     assignment = await GovernanceService.create_assignment(db, data, current_user.id)
     return _assignment_to_response(assignment)
 
@@ -101,6 +211,7 @@ async def list_assignments(
         is_active=is_active,
         page=page,
         page_size=page_size,
+        scope=_visible_assignments_clause(current_user),
     )
 
     items = [_assignment_to_response(a) for a in assignments]
@@ -123,6 +234,7 @@ async def update_assignment(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
+    await _ensure_assignment_managed(db, assignment_id, current_user)
     assignment = await GovernanceService.update_assignment(db, assignment_id, data, current_user.id)
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -140,6 +252,7 @@ async def revoke_assignment(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
+    await _ensure_assignment_managed(db, assignment_id, current_user)
     success = await GovernanceService.revoke_assignment(db, assignment_id, current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -158,6 +271,7 @@ async def create_policy(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
+    await _ensure_target_dataset_access(db, data, current_user)
     policy = await GovernanceService.create_policy(db, data, current_user.id)
     policy = await GovernanceService.get_policy(db, policy.id)
     return _policy_to_response(policy)
@@ -179,7 +293,8 @@ async def list_policies(
     _: None = Depends(require_permission("data_governance:view")),
 ):
     policies, total = await GovernanceService.list_policies(
-        db, domain_id=domain_id, dataset_id=dataset_id, policy_type=policy_type, page=page, page_size=page_size
+        db, domain_id=domain_id, dataset_id=dataset_id, policy_type=policy_type, page=page, page_size=page_size,
+        scope=_visible_policies_clause(current_user),
     )
 
     items = [_policy_to_response(p) for p in policies]
@@ -201,6 +316,7 @@ async def get_policy(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:view")),
 ):
+    await _ensure_policy_visible(db, policy_id, current_user)
     policy = await GovernanceService.get_policy(db, policy_id)
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -219,6 +335,9 @@ async def update_policy(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
+    await _ensure_policy_visible(db, policy_id, current_user)
+    if getattr(data, "dataset_id", None) is not None or getattr(data, "domain_id", None) is not None:
+        await _ensure_target_dataset_access(db, data, current_user)
     policy = await GovernanceService.update_policy(db, policy_id, data, current_user.id)
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -236,6 +355,7 @@ async def delete_policy(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_permission("data_governance:manage")),
 ):
+    await _ensure_policy_visible(db, policy_id, current_user)
     success = await GovernanceService.delete_policy(db, policy_id, current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Policy not found")

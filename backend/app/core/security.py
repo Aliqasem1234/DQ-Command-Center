@@ -92,7 +92,12 @@ async def get_current_user(db: AsyncSession, token: str) -> Optional[User]:
             )
             .where(User.id == UUID(user_id))
         )
-        return result.scalar_one_or_none()
+        user = result.scalar_one_or_none()
+        # A deactivated account must lose access immediately, not when its
+        # access token happens to expire.
+        if user is None or not user.is_active:
+            return None
+        return user
     except (ValueError, Exception):
         return None
 
@@ -161,7 +166,9 @@ async def rotate_refresh_token(db: AsyncSession, old_token: str) -> Optional[Tup
 
     result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
-    if user is None:
+    # Without the is_active check a deactivated user could keep rotating
+    # refresh tokens - and so stay signed in - indefinitely.
+    if user is None or not user.is_active:
         return None
 
     return await create_tokens(db, user)

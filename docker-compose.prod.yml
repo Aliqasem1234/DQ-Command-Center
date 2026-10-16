@@ -1,0 +1,146 @@
+# Production-like stack. Run it on its own (it does NOT merge with
+# docker-compose.yml / docker-compose.override.yml):
+#
+#   docker compose down                                  # stop dev (NEVER add -v)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# What differs from the development stack (docker-compose.yml):
+#   - the frontend is the compiled production build served by nginx (no Vite
+#     dev server, no source bind mounts, no hot reload);
+#   - ENVIRONMENT=production: API docs off, demo data never seeded, startup
+#     refuses weak/default secrets, DEBUG logging, CORS "*" and token echo;
+#   - only nginx publishes a port, bound to 127.0.0.1 by default. PostgreSQL
+#     and the backend are reachable only on the internal Docker network.
+#
+# Data safety:
+#   - Same project name and container names as the dev stack, so the two can
+#     never run at the same time against the same database files (Docker
+#     refuses a second container with the same name).
+#   - Volumes are "external": they must already exist and are never created
+#     empty by this file. For a brand-new installation create them first:
+#       docker volume create dq-command-center-v2_postgres_data
+#       docker volume create dq-command-center-v2_backend_uploads
+#
+# Secrets come from .env (variable interpolation); nothing secret is stored
+# in this file. See docs/PRODUCTION_READINESS_2026-10-16.md.
+
+name: dq-command-center-v2
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+    # No "ports:" - the database is only reachable from the backend.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - dq-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: dq-command-center-v2-backend:prod
+    container_name: dq-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: ${PROD_LOG_LEVEL:-INFO}
+      DEV_EXPOSE_AUTH_TOKENS: "false"
+      # Set PROD_CORS_ORIGINS to the public origin(s) when served elsewhere.
+      CORS_ORIGINS: ${PROD_CORS_ORIGINS:-http://localhost}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      DATABASE_URL_SYNC: ${DATABASE_URL_SYNC:?DATABASE_URL_SYNC must be set}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # Only used to create the first super admin when none exists yet.
+      INIT_ADMIN_EMAIL: ${INIT_ADMIN_EMAIL:-}
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:-}
+      INIT_ADMIN_NAME: ${INIT_ADMIN_NAME:-Administrator}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
+      LOCKOUT_THRESHOLD: ${LOCKOUT_THRESHOLD:-5}
+      LOCKOUT_DURATION_MINUTES: ${LOCKOUT_DURATION_MINUTES:-15}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@dqcommandcenter.com}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      APP_NAME: ${APP_NAME:-DQ Command Center}
+    # No source bind mount and no "ports:" - the API is reached via nginx.
+    volumes:
+      - backend_uploads:/app/uploads
+    # Only nginx (on the private Docker network) talks to the backend, so the
+    # proxy headers it sets can be trusted from private ranges.
+    command: >
+      sh -c "
+        set -e &&
+        alembic upgrade head &&
+        python -m app.core.seed_secure &&
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '172.16.0.0/12,10.0.0.0/8,192.168.0.0/16'
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - dq-network
+
+  nginx:
+    build:
+      context: ./frontend
+      dockerfile: ../nginx/Dockerfile.prod
+      additional_contexts:
+        nginxconf: ./nginx
+      args:
+        VITE_API_BASE_URL: /api
+    image: dq-command-center-v2-web:prod
+    container_name: dq-nginx
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Loopback only by default. Exposing this to other machines requires
+      # TLS in front of it first - see the production readiness doc.
+      - "${PROD_BIND_ADDRESS:-127.0.0.1}:${PROD_HTTP_PORT:-80}:80"
+    healthcheck:
+      # Both halves must work: the static app shell and the API (incl. DB).
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/index.html && wget -q -O /dev/null http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dq-network
+
+volumes:
+  postgres_data:
+    external: true
+    name: dq-command-center-v2_postgres_data
+  backend_uploads:
+    external: true
+    name: dq-command-center-v2_backend_uploads
+
+networks:
+  dq-network:
+    driver: bridge

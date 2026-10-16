@@ -1,0 +1,22 @@
+# Production web tier: builds the frontend and serves it with nginx, which
+# also proxies /api to the backend. Build context is ./frontend; the nginx
+# config comes from the "nginxconf" additional context (see
+# docker-compose.prod.yml).
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+# The API is reached through this same nginx, so a relative base URL works
+# for any hostname.
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY --from=nginxconf nginx.prod.conf /etc/nginx/nginx.conf
+COPY --from=nginxconf security-headers.conf /etc/nginx/security-headers.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

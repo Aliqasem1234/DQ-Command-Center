@@ -1,3 +1,4 @@
+from uuid import UUID
 import logging
 from typing import Optional
 from datetime import datetime, timezone, timedelta
@@ -37,8 +38,14 @@ async def list_audit_logs(
         count_query = count_query.where(AuditLog.entity_type == entity_type)
 
     if user_id:
-        query = query.where(AuditLog.user_id == user_id)
-        count_query = count_query.where(AuditLog.user_id == user_id)
+        # The column is a UUID; comparing it with a raw string only works on
+        # some drivers. An unparseable id simply matches nothing.
+        try:
+            user_uuid = user_id if isinstance(user_id, UUID) else UUID(str(user_id))
+        except ValueError:
+            user_uuid = None
+        query = query.where(AuditLog.user_id == user_uuid)
+        count_query = count_query.where(AuditLog.user_id == user_uuid)
 
     if date_from:
         try:

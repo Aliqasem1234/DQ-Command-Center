@@ -76,6 +76,8 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
             "bad_count": dup_count,
             "description": f"{dup_count} of {total_rows} rows are exact duplicates of an earlier row.",
             "examples": df[dup_mask].head(3).to_dict("records") if dup_count else [],
+            # Row labels affected; every cell of these rows counts as bad.
+            "bad_rows": list(df.index[dup_mask]),
         })
 
     for column_name in df.columns:
@@ -98,6 +100,7 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
                 "bad_count": null_count,
                 "description": f"{null_count} of {total} values in '{column_name}' are missing.",
                 "examples": [],
+                "bad_rows": list(series.index[~series.index.isin(non_null.index)]),
             })
 
         if len(non_null) == 0:
@@ -119,6 +122,7 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
                     "bad_count": len(invalid),
                     "description": f"{len(invalid)} of {len(non_null)} values in '{column_name}' are not valid email addresses.",
                     "examples": invalid.head(5).tolist(),
+                    "bad_rows": list(invalid.index),
                 })
 
         # Validity: datetime
@@ -136,6 +140,7 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
                     "bad_count": len(invalid),
                     "description": f"{len(invalid)} of {len(non_null)} values in '{column_name}' could not be parsed as dates.",
                     "examples": invalid.head(5).tolist(),
+                    "bad_rows": list(invalid.index),
                 })
 
         # Validity: numeric
@@ -153,6 +158,7 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
                     "bad_count": len(invalid),
                     "description": f"{len(invalid)} of {len(non_null)} values in '{column_name}' are not valid numbers.",
                     "examples": invalid.head(5).tolist(),
+                    "bad_rows": list(invalid.index),
                 })
 
         # Uniqueness: looks like an identifier column
@@ -170,6 +176,8 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
                     "bad_count": len(dup_values.unique()),
                     "description": f"{len(dup_values.unique())} distinct values in '{column_name}' appear more than once, though the column looks like an identifier.",
                     "examples": dup_values.unique()[:5].tolist(),
+                    # Every row holding a repeated identifier is affected.
+                    "bad_rows": list(dup_values.index),
                 })
 
         # Consistency: same value in different casing/whitespace
@@ -177,6 +185,7 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
             normalized = non_null.str.lower().str.strip()
             groups = non_null.groupby(normalized).unique()
             inconsistent_groups = [g for g in groups if len(g) > 1]
+            inconsistent_keys = [key for key, g in groups.items() if len(g) > 1]
             if inconsistent_groups:
                 affected = sum(len(g) for g in inconsistent_groups)
                 findings.append({
@@ -189,9 +198,34 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
                     "bad_count": affected,
                     "description": f"'{column_name}' has {len(inconsistent_groups)} sets of values that likely represent the same thing with different casing/spacing.",
                     "examples": [g.tolist() for g in inconsistent_groups[:5]],
+                    "bad_rows": list(non_null.index[normalized.isin(inconsistent_keys)]),
                 })
 
     return findings
+
+
+def compute_quality_score(df: pd.DataFrame, findings: list[dict]) -> float:
+    """Share of cells not affected by any failing check, as a percentage.
+
+    Each finding names the rows it affects: a column check marks that
+    column's cell in those rows, a row-level check (exact duplicate rows)
+    marks every cell of the row. A cell flagged by several checks is counted
+    once. (Previously the per-check counts were summed, mixing units - one
+    duplicate row counted as a single cell - and double-counting overlaps.)
+    """
+    if not len(df) or not len(df.columns):
+        return 100.0
+    bad = pd.DataFrame(False, index=df.index, columns=df.columns)
+    for finding in findings:
+        rows = finding.get("bad_rows", [])
+        if not rows:
+            continue
+        if finding["element_name"] is None:
+            bad.loc[rows, :] = True
+        elif finding["element_name"] in bad.columns:
+            bad.loc[rows, finding["element_name"]] = True
+    bad_cells = int(bad.values.sum())
+    return 100.0 - bad_cells / bad.size * 100
 
 
 async def scan_dataset_version(db: AsyncSession, version: DatasetVersion, current_user_id: UUID) -> dict:
@@ -332,6 +366,8 @@ async def scan_dataset_version(db: AsyncSession, version: DatasetVersion, curren
 
     overall_pass_rate = (rules_passed / total_rules_executed * 100) if total_rules_executed else 100.0
 
+    quality_score = compute_quality_score(df, list(findings_by_key.values()))
+
     db.add(QualityCheckRun(
         dataset_id=dataset.id,
         check_timestamp=now,
@@ -339,18 +375,10 @@ async def scan_dataset_version(db: AsyncSession, version: DatasetVersion, curren
         rules_passed=rules_passed,
         rules_failed=rules_failed,
         overall_pass_rate=overall_pass_rate,
+        quality_score=round(quality_score, 1),
         status="success",
         created_at=now,
     ))
-
-    # A simple, real, explainable dataset-level score: weighted by how much
-    # data each failing check actually affects, not just a rule count.
-    if len(df.columns) and len(df):
-        total_cells = len(df) * len(df.columns)
-        bad_cells = sum(f["bad_count"] for f in findings_by_key.values())
-        quality_score = max(0.0, 100.0 - (bad_cells / total_cells * 100))
-    else:
-        quality_score = 100.0
 
     version.quality_score = round(quality_score, 1)
     version.status = DatasetVersionStatus.SCANNED

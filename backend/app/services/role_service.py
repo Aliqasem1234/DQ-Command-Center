@@ -183,6 +183,10 @@ async def update_role_permissions(
     )
     for rp in existing_rps.scalars().all():
         await db.delete(rp)
+    # Flush the deletes first: the unit of work would otherwise emit the
+    # INSERTs before them and trip the unique (owner, link) constraint
+    # whenever an existing link is kept.
+    await db.flush()
 
     if data.permission_ids:
         perms_result = await db.execute(

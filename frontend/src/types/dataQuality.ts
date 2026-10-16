@@ -37,6 +37,7 @@ export interface DataQualityRule {
   created_by_id?: string;
   created_by_name?: string;
   is_active: boolean;
+  dataset_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +45,8 @@ export interface DataQualityRule {
 export interface CreateDataQualityRuleRequest {
   name: string;
   description?: string;
+  // One of the user's own datasets; the API rejects anyone else's.
+  dataset_id?: string;
   data_source?: string;
   target_field?: string;
   dimension: DataQualityDimension;

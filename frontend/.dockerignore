@@ -1,0 +1,9 @@
+# Host dependencies/build output must never be copied over the image's own:
+# node_modules from Windows/macOS carries the wrong native binaries.
+node_modules
+dist
+*.tsbuildinfo
+.env
+.env.*
+npm-debug.log*
+coverage

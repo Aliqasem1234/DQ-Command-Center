@@ -22,7 +22,9 @@ class DataQualityRuleBase(BaseModel):
 
 class DataQualityRuleCreate(DataQualityRuleBase):
     """Schema for creating a data quality rule"""
-    pass
+    # Optional: the dataset the rule documents. Must be one of the caller's
+    # datasets; a rule without one is private to its creator.
+    dataset_id: Optional[UUID] = None
 
 
 class DataQualityRuleUpdate(BaseModel):
@@ -43,6 +45,7 @@ class DataQualityRuleUpdate(BaseModel):
 class DataQualityRuleResponse(DataQualityRuleBase):
     """Schema for returning a data quality rule"""
     id: UUID
+    dataset_id: Optional[UUID] = None
     created_by_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

@@ -27,6 +27,10 @@ export const domainService = {
     return response.data;
   },
 
+  async deleteDataset(datasetId: string): Promise<void> {
+    await api.delete(`/v1/datasets/${datasetId}`);
+  },
+
   async updateDatasetDomain(datasetId: string, domainId: string | null): Promise<Dataset> {
     const response = await api.patch<Dataset>(`/v1/datasets/${datasetId}/domain`, { domain_id: domainId });
     return response.data;

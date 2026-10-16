@@ -11,6 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
 from app.models.data_quality_rule import DataQualityResult, DataQualityRule
+from sqlalchemy import true
+from app.core.dataset_access import visible_rules_clause
+
+
+def _rule_scope(user):
+    return visible_rules_clause(user) if user is not None else true()
+
+
+def _result_scope(user):
+    return DataQualityResult.rule_id.in_(select(DataQualityRule.id).where(_rule_scope(user)))
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +90,12 @@ class ResultsReportingService:
         db: AsyncSession,
         rule_id: UUID = None,
         limit: int = 10,
+        user=None,
     ) -> list[dict]:
-        """Get summary of errors and error patterns"""
+        """Get summary of errors and error patterns (results of rules `user` may see)"""
         try:
             query = select(DataQualityResult).where(
-                DataQualityResult.status == "error"
+                DataQualityResult.status == "error", _result_scope(user)
             ).order_by(
                 desc(DataQualityResult.execution_timestamp)
             )
@@ -244,8 +255,9 @@ class ResultsReportingService:
     async def get_quality_report(
         db: AsyncSession,
         days: int = 30,
+        user=None,
     ) -> dict:
-        """Generate comprehensive quality report"""
+        """Quality report over the rules (and results) `user` may see"""
         try:
             start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -253,14 +265,14 @@ class ResultsReportingService:
             query = select(
                 DataQualityRule.status,
                 func.count(DataQualityRule.id),
-            ).group_by(DataQualityRule.status)
+            ).where(_rule_scope(user)).group_by(DataQualityRule.status)
 
             result = await db.execute(query)
             rules_by_status = {row[0].value: row[1] for row in result.all()}
 
             # Get results metrics
             results_query = select(DataQualityResult).where(
-                DataQualityResult.execution_timestamp >= start_date
+                DataQualityResult.execution_timestamp >= start_date, _result_scope(user)
             )
             results_result = await db.execute(results_query)
             all_results = results_result.scalars().all()

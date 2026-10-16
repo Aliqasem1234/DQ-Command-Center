@@ -1,15 +1,19 @@
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from uuid import UUID
 
 import secrets
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, inspect, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.models.role import UserRole
+from app.models.role import UserRole, Role, RolePermission
+from app.core.seed_secure import SYSTEM_PERMISSIONS
+
+ALL_PERMISSION_CODES = [p["code"] for p in SYSTEM_PERMISSIONS]
 from app.core.security import (
     hash_password,
     verify_password,
@@ -20,7 +24,7 @@ from app.core.security import (
     revoke_refresh_token,
 )
 from app.models.login_attempt import LoginAttempt
-from app.models.token import PasswordResetToken, EmailVerificationToken
+from app.models.token import PasswordResetToken, EmailVerificationToken, RefreshToken
 from app.models.user import User
 from app.schemas.auth import UserResponse
 from app.services.email_service import email_service
@@ -28,22 +32,69 @@ from app.services.email_service import email_service
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_ROLE_NAME = "User"
+
+
+def normalize_email(email: str) -> str:
+    # Emails are compared case-insensitively so "Anna@x.se" and "anna@x.se"
+    # can't become two accounts, and login works regardless of casing.
+    return email.strip().lower()
+
+
+async def _username_taken(db: AsyncSession, username: str) -> bool:
+    result = await db.execute(select(User.id).where(User.username == username))
+    return result.first() is not None
+
+
+async def generate_unique_username(db: AsyncSession, email: str) -> str:
+    base = re.sub(r"[^a-z0-9._-]", "", email.split("@")[0].lower())[:40]
+    if len(base) < 3:
+        base = f"{base}user"
+    candidate = base
+    while await _username_taken(db, candidate):
+        candidate = f"{base}-{secrets.token_hex(3)}"
+    return candidate
+
+
+async def assign_default_role(db: AsyncSession, user: User) -> None:
+    """Give a user the least-privileged system role if they have no role yet.
+
+    New accounts previously got no role at all until email verification,
+    which never happens without SMTP - so a freshly registered user could
+    log in but every page answered 403.
+    """
+    from app.models.role import Role
+
+    existing = await db.execute(select(UserRole.id).where(UserRole.user_id == user.id))
+    if existing.first() is not None:
+        return
+    role = (await db.execute(select(Role).where(Role.name == DEFAULT_ROLE_NAME))).scalar_one_or_none()
+    if role is None:
+        logger.error(f"Default role '{DEFAULT_ROLE_NAME}' missing; user {user.id} has no role")
+        return
+    db.add(UserRole(user_id=user.id, role_id=role.id))
+    await db.flush()
+
+
 async def register_user(
     db: AsyncSession,
     email: str,
-    username: str,
     password: str,
     full_name: str,
+    username: Optional[str] = None,
 ) -> Tuple[User, str]:
     now = datetime.now(timezone.utc)
+    email = normalize_email(email)
 
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
     if result.scalar_one_or_none():
         raise ValueError("Email already registered")
 
-    result = await db.execute(select(User).where(User.username == username))
-    if result.scalar_one_or_none():
-        raise ValueError("Username already taken")
+    if username:
+        if await _username_taken(db, username):
+            raise ValueError("Username already taken")
+    else:
+        username = await generate_unique_username(db, email)
 
     user = User(
         email=email,
@@ -59,6 +110,7 @@ async def register_user(
     )
     db.add(user)
     await db.flush()
+    await assign_default_role(db, user)
 
     # Generate email verification token
     token_str = generate_token_string()
@@ -88,11 +140,17 @@ async def login_user(
     user_agent: Optional[str] = None,
 ) -> Tuple[User, str, str]:
     now = datetime.now(timezone.utc)
+    email = normalize_email(email)
 
     result = await db.execute(
         select(User)
-        .options(selectinload(User.roles).selectinload(UserRole.role))
-        .where(User.email == email)
+        .options(
+            selectinload(User.roles)
+            .selectinload(UserRole.role)
+            .selectinload(Role.role_permissions)
+            .selectinload(RolePermission.permission)
+        )
+        .where(func.lower(User.email) == email)
     )
     user = result.scalar_one_or_none()
 
@@ -156,8 +214,9 @@ async def logout_user(db: AsyncSession, refresh_token: str) -> bool:
 
 async def forgot_password(db: AsyncSession, email: str) -> Optional[str]:
     now = datetime.now(timezone.utc)
+    email = normalize_email(email)
 
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -212,7 +271,14 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> boo
     user.locked_until = None
     reset_token.is_used = True
 
-    # Revoke all refresh tokens
+    # A reset is how someone recovers a compromised account, so every
+    # existing session must end: revoke all refresh tokens. (This previously
+    # deleted the reset tokens instead, leaving old sessions valid for days.)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.is_revoked == False)  # noqa: E712
+        .values(is_revoked=True)
+    )
     await db.execute(
         delete(PasswordResetToken).where(
             PasswordResetToken.user_id == user.id,
@@ -281,6 +347,28 @@ async def change_password(
     return True
 
 
+def get_permission_codes(user: User) -> list[str]:
+    """Effective permission codes, mirroring app.core.rbac.require_permission.
+
+    Only reads relationships that are already loaded (login and
+    get_current_user eager-load them), so it never triggers lazy IO.
+    """
+    if user.is_super_admin:
+        return sorted(ALL_PERMISSION_CODES)
+    loaded = inspect(user).unloaded
+    if "roles" in loaded:
+        return []
+    codes = set()
+    for ur in user.roles:
+        role = ur.role
+        if role is None or "role_permissions" in inspect(role).unloaded:
+            continue
+        for rp in role.role_permissions:
+            if rp.permission is not None:
+                codes.add(rp.permission.code)
+    return sorted(codes)
+
+
 def user_to_response(user: User) -> UserResponse:
     dept_name = None
     if hasattr(user, 'department_rel') and user.department_rel:
@@ -291,6 +379,7 @@ def user_to_response(user: User) -> UserResponse:
         roles = [ur.role.name for ur in user.roles if ur.role]
 
     return UserResponse(
+        permissions=get_permission_codes(user),
         id=str(user.id),
         email=user.email,
         username=user.username,

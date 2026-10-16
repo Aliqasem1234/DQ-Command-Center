@@ -2,12 +2,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.models.role import Role, UserRole
 from app.models.department import Department
+from app.models.token import RefreshToken
 from app.core.security import hash_password
 from app.utils.audit_logger import create_audit_log
 from app.schemas.user import (
@@ -15,6 +16,46 @@ from app.schemas.user import (
 )
 
 logger = logging.getLogger(__name__)
+
+SUPER_ADMIN_ROLE = "Super Admin"
+DEFAULT_ROLE = "User"
+
+
+class PrivilegeEscalationError(Exception):
+    """An actor tried to grant or alter privileges above their own."""
+
+
+def _is_super(user: User) -> bool:
+    return bool(user.is_super_admin) or any(
+        ur.role is not None and ur.role.name == SUPER_ADMIN_ROLE for ur in user.roles
+    )
+
+
+async def _load_with_roles(db: AsyncSession, user_id: UUID) -> Optional[User]:
+    result = await db.execute(
+        select(User).options(selectinload(User.roles).selectinload(UserRole.role)).where(User.id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def ensure_can_manage(
+    db: AsyncSession,
+    actor: User,
+    target_id: Optional[UUID] = None,
+    requested_roles: Optional[List[str]] = None,
+) -> None:
+    """Holders of users:manage who are not super admins (the "Admin" role)
+    may manage ordinary accounts, but must not be able to mint super admins
+    or modify one (e.g. change its email and take it over via password
+    reset) - otherwise users:manage silently implies every permission."""
+    if _is_super(actor):
+        return
+    if requested_roles and SUPER_ADMIN_ROLE in requested_roles:
+        raise PrivilegeEscalationError("Only a super admin can grant the Super Admin role")
+    if target_id is not None:
+        target = await _load_with_roles(db, target_id)
+        if target is not None and _is_super(target):
+            raise PrivilegeEscalationError("Only a super admin can modify a super admin account")
 
 
 async def list_users(
@@ -94,8 +135,9 @@ async def admin_create_user(
     user_agent: Optional[str] = None,
 ) -> UserResponse:
     now = datetime.now(timezone.utc)
+    data.email = data.email.strip().lower()
 
-    existing = await db.execute(select(User).where(User.email == data.email))
+    existing = await db.execute(select(User).where(func.lower(User.email) == data.email))
     if existing.scalar_one_or_none():
         raise ValueError("Email already registered")
 
@@ -125,9 +167,12 @@ async def admin_create_user(
     db.add(user)
     await db.flush()
 
-    if data.roles:
+    # Omitting roles gives the same least-privileged default a self-registered
+    # user gets; an explicit empty list still means "no roles".
+    role_names = [DEFAULT_ROLE] if data.roles is None else data.roles
+    if role_names:
         roles_result = await db.execute(
-            select(Role).where(Role.name.in_(data.roles))
+            select(Role).where(Role.name.in_(role_names))
         )
         roles = roles_result.scalars().all()
         for role in roles:
@@ -168,9 +213,11 @@ async def admin_update_user(
         "is_active": user.is_active, "department_id": str(user.department_id) if user.department_id else None,
     }
 
+    if data.email is not None:
+        data.email = data.email.strip().lower()
     if data.email is not None and data.email != user.email:
         existing = await db.execute(
-            select(User).where(User.email == data.email, User.id != user_id)
+            select(User).where(func.lower(User.email) == data.email, User.id != user_id)
         )
         if existing.scalar_one_or_none():
             raise ValueError("Email already in use")
@@ -221,6 +268,12 @@ async def admin_delete_user(
 
     user.is_active = False
     user.updated_at = datetime.now(timezone.utc)
+    # End every session the user has open.
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.is_revoked == False)  # noqa: E712
+        .values(is_revoked=True)
+    )
 
     await create_audit_log(
         db, actor_user_id, "DEACTIVATE", "user", str(user.id), entity_name=user.email,
@@ -254,6 +307,10 @@ async def assign_user_roles(
     existing_role_names = [ur.role.name for ur in existing_role_rows if ur.role]
     for ur in existing_role_rows:
         await db.delete(ur)
+    # Flush the deletes first: the unit of work would otherwise emit the
+    # INSERTs before them and trip the unique (owner, link) constraint
+    # whenever an existing link is kept.
+    await db.flush()
 
     if data.roles:
         roles_result = await db.execute(

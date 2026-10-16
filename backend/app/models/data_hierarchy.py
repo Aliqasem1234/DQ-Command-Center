@@ -95,9 +95,13 @@ class DatasetVersionStatus(str, enum.Enum):
 class DataDomain(Base):
     """Business domain - grouping related datasets"""
     __tablename__ = "data_domains"
+    # Each user groups their own datasets into their own domains, so a name
+    # only has to be unique per owner.
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_data_domains_owner_name"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     description = Column(Text, nullable=True)
     
     # Ownership
@@ -485,6 +489,9 @@ class QualityCheckRun(Base):
     rules_passed = Column(Integer, nullable=True)
     rules_failed = Column(Integer, nullable=True)
     overall_pass_rate = Column(Float, nullable=True)
+    # Dataset quality score (share of clean cells) this run produced - the
+    # history behind the quality trend.
+    quality_score = Column(Float, nullable=True)
     
     # Status
     status = Column(String(50), nullable=False)  # success, partial, failed

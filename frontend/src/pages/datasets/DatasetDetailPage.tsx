@@ -13,10 +13,14 @@ import { domainService } from '../../services/domainService';
 import { datasetFileService } from '../../services/datasetFileService';
 import { dashboardService } from '../../services/dashboardService';
 import { api, getErrorMessage } from '../../services/api';
-import { useThemeStore } from '../../store/themeStore';
+import { CHART_AXIS_COLOR, CHART_GRID_COLOR, CHART_TOOLTIP_STYLE } from '../../theme/chart';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
 import type { CleaningOperation, DatasetVersion } from '../../types';
+import { usePermission } from '../../hooks/usePermission';
+import { PERMISSIONS } from '../../auth/permissions';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { useAuthStore } from '../../store/authStore';
 
 type Tab = 'overview' | 'profile' | 'issues' | 'clean' | 'versions';
 
@@ -25,6 +29,9 @@ export function DatasetDetailPage() {
   const { datasetId } = useParams<{ datasetId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const canManage = usePermission(PERMISSIONS.datasetsManage);
+  const currentUser = useAuthStore((s) => s.user);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -120,6 +127,19 @@ export function DatasetDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    setConfirmDelete(false);
+    setActionError(null);
+    try {
+      await domainService.deleteDataset(datasetId!);
+      queryClient.removeQueries({ queryKey: ['dataset', datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ['all-datasets'] });
+      navigate('/datasets');
+    } catch (err) {
+      setActionError(getErrorMessage(err));
+    }
+  };
+
   if (datasetLoading || versionsLoading) return <LoadingSpinner />;
   if (!dataset) return <EmptyState title={t('datasets.datasetNotFound')} />;
 
@@ -140,6 +160,7 @@ export function DatasetDetailPage() {
             domainId={dataset.domain_id}
             domains={domains ?? []}
             onChange={handleDomainChange}
+            readOnly={!canManage}
           />
         </div>
         <div className="flex items-center gap-3">
@@ -148,6 +169,8 @@ export function DatasetDetailPage() {
             selectedId={activeVersionId}
             onChange={setSelectedVersionId}
           />
+          {canManage && (
+          <>
           <button className="btn-ghost flex items-center gap-2" disabled={busy || !activeVersionId} onClick={handleScan}>
             <RefreshCw size={16} className={busy ? 'animate-spin' : ''} />
             {t('datasets.scan')}
@@ -166,6 +189,19 @@ export function DatasetDetailPage() {
               }}
             />
           </label>
+          </>
+          )}
+          {/* Only the owner may delete (stewards/shared users can't; the API enforces it). */}
+          {canManage && (currentUser?.is_super_admin || dataset.data_owner_id === currentUser?.id) && (
+            <button
+              type="button"
+              className="btn-ghost flex items-center gap-2 text-red-600 dark:text-red-400"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 size={16} />
+              {t('datasets.deleteDataset')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -174,7 +210,9 @@ export function DatasetDetailPage() {
       )}
 
       <div className="flex gap-1 border-b border-slate-200 mb-6">
-        {(['overview', 'profile', 'issues', 'clean', 'versions'] as Tab[]).map((tabKey) => (
+        {(['overview', 'profile', 'issues', 'clean', 'versions'] as Tab[])
+          .filter((tabKey) => tabKey !== 'clean' || canManage)
+          .map((tabKey) => (
           <button
             key={tabKey}
             onClick={() => setTab(tabKey)}
@@ -195,7 +233,7 @@ export function DatasetDetailPage() {
       )}
       {tab === 'profile' && <ProfileTab datasetId={datasetId!} versionId={activeVersionId} />}
       {tab === 'issues' && <IssuesTab issues={issues || []} />}
-      {tab === 'clean' && activeVersionId && (
+      {tab === 'clean' && canManage && activeVersionId && (
         <CleanTab
           datasetId={datasetId!}
           versionId={activeVersionId}
@@ -208,6 +246,15 @@ export function DatasetDetailPage() {
       {tab === 'versions' && (
         <VersionsTab versions={versions || []} onDownload={handleDownload} />
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('datasets.deleteDataset')}
+        message={t('datasets.deleteDatasetConfirm', { name: dataset.name })}
+        confirmText={t('common.delete')}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }
@@ -216,10 +263,12 @@ function DomainBadge({
   domainId,
   domains,
   onChange,
+  readOnly = false,
 }: {
   domainId: string | null;
   domains: { id: string; name: string }[];
   onChange: (domainId: string | null) => Promise<void>;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -227,6 +276,14 @@ function DomainBadge({
   const [saving, setSaving] = useState(false);
 
   const domainName = domainId ? domains.find((d) => d.id === domainId)?.name : null;
+
+  if (readOnly) {
+    return (
+      <span className="inline-block mt-2 text-xs text-slate-500 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-0.5">
+        {domainName ?? t('datasets.noDomainOption')}
+      </span>
+    );
+  }
 
   if (editing) {
     return (
@@ -314,13 +371,9 @@ function OverviewTab({
   comparison: { versions: { version_number: number; quality_score: number | null }[] } | undefined;
 }) {
   const { t } = useTranslation();
-  const { mode } = useThemeStore();
-  const isDark = mode === 'dark';
-  const axisColor = isDark ? '#64748b' : '#94a3b8';
-  const gridColor = isDark ? '#334155' : '#e2e8f0';
-  const tooltipStyle = isDark
-    ? { backgroundColor: '#1e293b', border: '1px solid #334155', color: '#f1f5f9' }
-    : { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a' };
+  const axisColor = CHART_AXIS_COLOR;
+  const gridColor = CHART_GRID_COLOR;
+  const tooltipStyle = CHART_TOOLTIP_STYLE;
   const score = activeVersion?.quality_score;
   const chartData = (comparison?.versions || [])
     .filter((v) => v.quality_score !== null)

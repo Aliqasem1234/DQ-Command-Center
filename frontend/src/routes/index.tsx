@@ -8,12 +8,10 @@ import { LoginPageModern as LoginPage } from '../pages/auth/LoginPageModern';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { NotFoundPage } from '../pages/errors/NotFoundPage';
 import { ForbiddenPage } from '../pages/errors/ForbiddenPage';
+import { RouteErrorPage } from '../pages/errors/RouteErrorPage';
+import { PERMISSIONS as P } from '../auth/permissions';
 
-// Everything reachable only after login (or as a secondary auth flow) is
-// lazy-loaded so the initial bundle only carries the login screen - the
-// production build otherwise bundled every page (dashboard, datasets,
-// governance, quality rules, etc.) into one >900KB chunk regardless of
-// which page a given user actually needed.
+// Lazy-load all protected pages for better initial bundle performance
 const RegisterPage = lazy(() => import('../pages/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })));
 const ResetPasswordPage = lazy(() => import('../pages/auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const VerifyEmailPage = lazy(() => import('../pages/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })));
@@ -23,6 +21,7 @@ const UserListPage = lazy(() => import('../pages/users/UserListPage').then((m) =
 const RoleListPage = lazy(() => import('../pages/roles/RoleListPage').then((m) => ({ default: m.RoleListPage })));
 const AuditLogPage = lazy(() => import('../pages/audit/AuditLogPage').then((m) => ({ default: m.AuditLogPage })));
 const ProfilePage = lazy(() => import('../pages/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const SecurityPage = lazy(() => import('../pages/profile/SecurityPage').then((m) => ({ default: m.SecurityPage })));
 const DataQualityRulesPage = lazy(() => import('../pages/dataQuality/DataQualityRulesPage'));
 const DataQualityMonitoringPage = lazy(() => import('../pages/dataQuality/DataQualityMonitoringPage'));
 const DatasetsListPage = lazy(() => import('../pages/datasets/DatasetsListPage').then((m) => ({ default: m.DatasetsListPage })));
@@ -33,10 +32,22 @@ function Loadable({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingSpinner />}>{children}</Suspense>;
 }
 
+function guarded(path: string, page: ReactNode, permissions: readonly string[]) {
+  return {
+    path,
+    element: (
+      <ProtectedRoute requiredPermissions={permissions}>
+        <Loadable>{page}</Loadable>
+      </ProtectedRoute>
+    ),
+  };
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <AuthLayout />,
+    errorElement: <RouteErrorPage />,
     children: [
       { index: true, element: <Navigate to="/login" replace /> },
       { path: 'login', element: <LoginPage /> },
@@ -53,18 +64,22 @@ export const router = createBrowserRouter([
         <MainLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorPage />,
     children: [
       { path: 'dashboard', element: <Loadable><DashboardPage /></Loadable> },
-      { path: 'datasets', element: <Loadable><DatasetsListPage /></Loadable> },
-      { path: 'datasets/:datasetId', element: <Loadable><DatasetDetailPage /></Loadable> },
-      { path: 'governance', element: <Loadable><GovernancePage /></Loadable> },
-      { path: 'departments', element: <Loadable><DepartmentListPage /></Loadable> },
-      { path: 'users', element: <Loadable><UserListPage /></Loadable> },
-      { path: 'roles', element: <Loadable><RoleListPage /></Loadable> },
-      { path: 'audit', element: <Loadable><AuditLogPage /></Loadable> },
       { path: 'profile', element: <Loadable><ProfilePage /></Loadable> },
-      { path: 'data-quality/rules', element: <Loadable><DataQualityRulesPage /></Loadable> },
-      { path: 'data-quality/monitoring', element: <Loadable><DataQualityMonitoringPage /></Loadable> },
+      { path: 'security', element: <Loadable><SecurityPage /></Loadable> },
+      { path: 'activity', element: <Loadable><AuditLogPage scope="mine" /></Loadable> },
+      guarded('datasets', <DatasetsListPage />, [P.datasetsView]),
+      guarded('datasets/:datasetId', <DatasetDetailPage />, [P.datasetsView]),
+      guarded('governance', <GovernancePage />, [P.governanceView]),
+      guarded('data-quality/rules', <DataQualityRulesPage />, [P.qualityView]),
+      guarded('data-quality/monitoring', <DataQualityMonitoringPage />, [P.qualityView]),
+      // Admin pages: gated on the exact permission each page's API requires.
+      guarded('users', <UserListPage />, [P.usersManage]),
+      guarded('roles', <RoleListPage />, [P.rolesManage]),
+      guarded('departments', <DepartmentListPage />, [P.departmentsManage]),
+      guarded('audit', <AuditLogPage scope="system" />, [P.auditView]),
     ],
   },
   {

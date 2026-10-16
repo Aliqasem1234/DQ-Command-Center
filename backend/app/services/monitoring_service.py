@@ -6,10 +6,19 @@ Provides comprehensive monitoring, alerting, and trend analysis for data quality
 
 import logging
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, true, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.data_quality_rule import DataQualityResult, DataQualityRule, DataQualityDimension
+from app.core.dataset_access import visible_rules_clause
+
+
+def _rule_scope(user):
+    return visible_rules_clause(user) if user is not None else true()
+
+
+def _result_scope(user):
+    return DataQualityResult.rule_id.in_(select(DataQualityRule.id).where(_rule_scope(user)))
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +31,7 @@ class MonitoringService:
         db: AsyncSession,
         days: int = 30,
         dimension: str = None,
+        user=None,
     ) -> list[dict]:
         """Get pass rate trend over time"""
         try:
@@ -31,11 +41,9 @@ class MonitoringService:
                 func.date(DataQualityResult.execution_timestamp).label("date"),
                 func.count(DataQualityResult.id).label("total_results"),
                 func.sum(
-                    func.cast(
-                        (DataQualityResult.status == "passed"), type_=int
-                    )
+                    case((DataQualityResult.status == "passed", 1), else_=0)
                 ).label("passed_results"),
-            ).where(DataQualityResult.execution_timestamp >= start_date)
+            ).where(DataQualityResult.execution_timestamp >= start_date, _result_scope(user))
 
             if dimension:
                 try:
@@ -75,6 +83,7 @@ class MonitoringService:
     async def get_dimension_trends(
         db: AsyncSession,
         days: int = 30,
+        user=None,
     ) -> list[dict]:
         """Get pass rate trends by dimension"""
         try:
@@ -82,7 +91,7 @@ class MonitoringService:
 
             for dimension in DataQualityDimension:
                 trend = await MonitoringService.get_pass_rate_trend(
-                    db, days=days, dimension=dimension.value
+                    db, days=days, dimension=dimension.value, user=user
                 )
                 if trend:
                     trends.append(
@@ -109,6 +118,7 @@ class MonitoringService:
         db: AsyncSession,
         rule_id: str = None,
         limit: int = 10,
+        user=None,
     ) -> list[dict]:
         """Get performance metrics for rules (pass rate, failure trends)"""
         try:
@@ -119,14 +129,14 @@ class MonitoringService:
                 DataQualityRule.severity,
                 func.count(DataQualityResult.id).label("total_executions"),
                 func.sum(
-                    func.cast((DataQualityResult.status == "passed"), type_=int)
+                    case((DataQualityResult.status == "passed", 1), else_=0)
                 ).label("passed_executions"),
                 func.sum(
-                    func.cast((DataQualityResult.status == "failed"), type_=int)
+                    case((DataQualityResult.status == "failed", 1), else_=0)
                 ).label("failed_executions"),
                 func.avg(DataQualityResult.execution_duration_ms).label("avg_duration"),
                 func.max(DataQualityResult.execution_timestamp).label("last_execution"),
-            ).join(DataQualityResult, DataQualityRule.id == DataQualityResult.rule_id)
+            ).join(DataQualityResult, DataQualityRule.id == DataQualityResult.rule_id).where(_rule_scope(user))
 
             if rule_id:
                 query = query.where(DataQualityRule.id == rule_id)
@@ -138,7 +148,7 @@ class MonitoringService:
                 DataQualityRule.severity,
             ).order_by(
                 func.sum(
-                    func.cast((DataQualityResult.status == "failed"), type_=int)
+                    case((DataQualityResult.status == "failed", 1), else_=0)
                 ).desc()
             ).limit(limit)
 
@@ -171,6 +181,7 @@ class MonitoringService:
     async def get_failing_rules(
         db: AsyncSession,
         limit: int = 10,
+        user=None,
     ) -> list[dict]:
         """Get top failing rules (most recent failures)"""
         try:
@@ -201,6 +212,7 @@ class MonitoringService:
                 and_(
                     DataQualityResult.status == "failed",
                     DataQualityResult.execution_timestamp >= failed_subquery.c.last_failure - timedelta(days=1),
+                    _rule_scope(user),
                 )
             ).group_by(
                 DataQualityRule.id,
@@ -230,21 +242,21 @@ class MonitoringService:
             return []
 
     @staticmethod
-    async def get_health_score(db: AsyncSession) -> dict:
+    async def get_health_score(db: AsyncSession, user=None) -> dict:
         """Calculate overall data quality health score (0-100)"""
         try:
             # Get results from last 7 days
             seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
             total_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(_result_scope(user)).where(
                     DataQualityResult.execution_timestamp >= seven_days_ago
                 )
             )
             total = total_result.scalar() or 0
 
             passed_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(_result_scope(user)).where(
                     and_(
                         DataQualityResult.status == "passed",
                         DataQualityResult.execution_timestamp >= seven_days_ago,
@@ -259,7 +271,7 @@ class MonitoringService:
             # Calculate trend (compare to previous 7 days)
             fourteen_days_ago = datetime.now(timezone.utc) - timedelta(days=14)
             prev_total_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(_result_scope(user)).where(
                     and_(
                         DataQualityResult.execution_timestamp >= fourteen_days_ago,
                         DataQualityResult.execution_timestamp < seven_days_ago,
@@ -269,7 +281,7 @@ class MonitoringService:
             prev_total = prev_total_result.scalar() or 0
 
             prev_passed_result = await db.execute(
-                select(func.count(DataQualityResult.id)).where(
+                select(func.count(DataQualityResult.id)).where(_result_scope(user)).where(
                     and_(
                         DataQualityResult.status == "passed",
                         DataQualityResult.execution_timestamp >= fourteen_days_ago,

@@ -18,7 +18,7 @@ export function ForgotPasswordPage() {
     setIsLoading(true);
     const result = await forgotPassword(email);
     if (result.success) {
-      setMessage(result.message || t('auth.resetEmailSent'));
+      setMessage(t('auth.resetEmailSent'));
     } else {
       setError(result.error || t('auth.resetFailed'));
     }

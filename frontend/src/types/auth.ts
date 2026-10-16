@@ -1,6 +1,7 @@
 export interface RegisterRequest {
   email: string;
-  username: string;
+  // Optional: the server derives a unique username from the email if omitted.
+  username?: string;
   password: string;
   full_name: string;
 }
@@ -30,6 +31,9 @@ export interface UserResponse {
   is_super_admin: boolean;
   created_at: string;
   roles: string[];
+  // Absent on sessions persisted before the API returned it; refreshed
+  // from /auth/me on load.
+  permissions?: string[];
 }
 
 export interface RefreshTokenResponse {

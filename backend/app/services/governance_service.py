@@ -86,6 +86,7 @@ class GovernanceService:
         is_active: bool = None,
         page: int = 1,
         page_size: int = 10,
+        scope=None,
     ) -> tuple[list[DataGovernance], int]:
         query = select(DataGovernance).options(
             selectinload(DataGovernance.user),
@@ -93,6 +94,8 @@ class GovernanceService:
             selectinload(DataGovernance.dataset),
             selectinload(DataGovernance.element),
         )
+        if scope is not None:
+            query = query.where(scope)
 
         if domain_id:
             query = query.where(DataGovernance.domain_id == domain_id)
@@ -244,8 +247,11 @@ class GovernanceService:
         policy_type: str = None,
         page: int = 1,
         page_size: int = 10,
+        scope=None,
     ) -> tuple[list[GovernancePolicy], int]:
         query = select(GovernancePolicy).options(selectinload(GovernancePolicy.created_by))
+        if scope is not None:
+            query = query.where(scope)
 
         if domain_id:
             query = query.where(GovernancePolicy.domain_id == domain_id)

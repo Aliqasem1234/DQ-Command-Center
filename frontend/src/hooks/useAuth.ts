@@ -59,13 +59,12 @@ export function useAuth() {
     async (token: string, password: string) => {
       try {
         const response = await authService.resetPassword({ token, password });
-        navigate('/login');
         return { success: true, message: response.message };
       } catch (error) {
         return { success: false, error: getErrorMessage(error) };
       }
     },
-    [navigate]
+    []
   );
 
   const verifyEmail = useCallback(async (token: string) => {

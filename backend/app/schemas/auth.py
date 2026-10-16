@@ -1,13 +1,25 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Optional
 from datetime import datetime
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    username: str = Field(min_length=3, max_length=50)
+    # The registration form doesn't ask for a username, so it is optional:
+    # when omitted the server derives a unique one from the email address.
+    # Deriving it client-side meant short local-parts ("ab@x.se") and shared
+    # local-parts across domains failed on a field the user never saw.
+    username: Optional[str] = Field(default=None, min_length=3, max_length=50)
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("full_name")
+    @classmethod
+    def full_name_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Full name must not be blank")
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -35,6 +47,10 @@ class UserResponse(BaseModel):
     is_super_admin: bool
     created_at: datetime
     roles: List[str] = []
+    # Effective permission codes, so the frontend can gate navigation and
+    # actions on the same codes the backend enforces (UX only - the backend
+    # remains the security boundary).
+    permissions: List[str] = []
 
     model_config = {"from_attributes": True}
 

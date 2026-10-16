@@ -14,4 +14,12 @@ export const auditService = {
     const response = await api.get<AuditLogListResponse>('/v1/audit/logs', { params });
     return response.data;
   },
+
+  /** The signed-in user's own activity - available to every user. */
+  async listMine(page = 1, pageSize = 50): Promise<AuditLogListResponse> {
+    const response = await api.get<AuditLogListResponse>('/v1/audit/my-logs', {
+      params: { page, page_size: pageSize },
+    });
+    return response.data;
+  },
 };

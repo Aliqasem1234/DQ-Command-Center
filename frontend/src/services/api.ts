@@ -4,6 +4,7 @@ import axios, {
   AxiosResponse,
 } from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { normalizeError } from './errorNormalizer';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -14,6 +15,17 @@ export const api = axios.create({
   },
   withCredentials: true,
 });
+
+// A 401 from these means "wrong credentials/token", not "access token
+// expired", so it must reach the caller instead of triggering a refresh.
+// (Request URLs are relative to baseURL, e.g. "/v1/auth/login".)
+const PUBLIC_AUTH_PATHS = ['login', 'register', 'refresh', 'forgot-password', 'reset-password', 'verify-email'];
+
+export function isPublicAuthRequest(url: string | undefined): boolean {
+  if (!url) return false;
+  const path = url.split('?')[0];
+  return PUBLIC_AUTH_PATHS.some((p) => path.endsWith(`/v1/auth/${p}`));
+}
 
 let isRefreshing = false;
 let failedQueue: Array<{
@@ -52,9 +64,9 @@ api.interceptors.response.use(
 
     if (
       error.response?.status === 401 &&
+      originalRequest &&
       !originalRequest._retry &&
-      originalRequest.url !== '/api/v1/auth/login' &&
-      originalRequest.url !== '/api/v1/auth/refresh'
+      !isPublicAuthRequest(originalRequest.url)
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -109,16 +121,10 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Converts any thrown value into a readable message in the user's language.
+ * Always returns a string, so it is always safe to render.
+ */
 export function getErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data;
-    if (data && typeof data === 'object' && 'detail' in data) {
-      return (data as { detail: string }).detail;
-    }
-    return error.message;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return 'An unexpected error occurred';
+  return normalizeError(error);
 }

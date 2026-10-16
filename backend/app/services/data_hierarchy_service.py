@@ -16,6 +16,8 @@ from app.models.data_hierarchy import (
     DataGovernance, QualityTarget, RuleEffectiveness, QualityCheckRun, QualityIssue,
     DatasetType, ClassificationLevel, GovernanceRole, IssueSeverity, IssueStatus
 )
+from app.models.user import User
+from app.core.dataset_access import accessible_datasets_clause, scoped_to_accessible_datasets, visible_domains_clause
 from app.models.data_quality_rule import DataQualityRule
 from app.utils.audit_logger import log_audit_action
 
@@ -27,6 +29,7 @@ class DataHierarchyService:
 
     # ===== DOMAIN MANAGEMENT =====
 
+
     @staticmethod
     async def create_domain(
         db: AsyncSession,
@@ -36,10 +39,16 @@ class DataHierarchyService:
         domain_steward_id: UUID = None,
         current_user_id: UUID = None,
     ) -> DataDomain:
-        """Create a new data domain"""
+        """Create a new data domain, owned by its creator"""
+        existing = await db.execute(
+            select(DataDomain.id).where(DataDomain.owner_id == current_user_id, DataDomain.name == name)
+        )
+        if existing.first() is not None:
+            raise ValueError("You already have a domain with this name")
         try:
             domain = DataDomain(
                 name=name,
+                owner_id=current_user_id,
                 description=description,
                 business_owner_id=business_owner_id,
                 domain_steward_id=domain_steward_id,
@@ -78,12 +87,14 @@ class DataHierarchyService:
         db: AsyncSession,
         page: int = 1,
         page_size: int = 10,
+        user: User | None = None,
     ) -> tuple[list[DataDomain], int]:
-        """List all domains with pagination"""
-        query = select(DataDomain).order_by(desc(DataDomain.created_at))
-        
+        """List the domains `user` may see (their own; all for super admins)"""
+        conditions = [visible_domains_clause(user)] if user is not None else []
+        query = select(DataDomain).where(*conditions).order_by(desc(DataDomain.created_at))
+
         count_result = await db.execute(
-            select(func.count(DataDomain.id))
+            select(func.count(DataDomain.id)).where(*conditions)
         )
         total = count_result.scalar() or 0
 
@@ -198,18 +209,20 @@ class DataHierarchyService:
         domain_id: UUID,
         page: int = 1,
         page_size: int = 10,
+        user: User | None = None,
     ) -> tuple[list[Dataset], int]:
-        """List datasets in a domain"""
-        query = select(Dataset).where(
-            Dataset.domain_id == domain_id
-        ).order_by(desc(Dataset.created_at))
+        """List datasets in a domain (only those `user` may access)"""
+        conditions = [Dataset.domain_id == domain_id]
+        if user is not None:
+            conditions.append(accessible_datasets_clause(user))
 
-        count_result = await db.execute(
-            select(func.count(Dataset.id)).where(Dataset.domain_id == domain_id)
-        )
+        count_result = await db.execute(select(func.count(Dataset.id)).where(*conditions))
         total = count_result.scalar() or 0
 
-        query = query.offset((page - 1) * page_size).limit(page_size)
+        query = (
+            select(Dataset).where(*conditions).order_by(desc(Dataset.created_at))
+            .offset((page - 1) * page_size).limit(page_size)
+        )
         result = await db.execute(query)
         return result.scalars().all(), total
 
@@ -218,14 +231,18 @@ class DataHierarchyService:
         db: AsyncSession,
         page: int = 1,
         page_size: int = 10,
+        user: User | None = None,
     ) -> tuple[list[Dataset], int]:
-        """List datasets across all domains"""
-        query = select(Dataset).order_by(desc(Dataset.created_at))
+        """List datasets across all domains (only those `user` may access)"""
+        conditions = [accessible_datasets_clause(user)] if user is not None else []
 
-        count_result = await db.execute(select(func.count(Dataset.id)))
+        count_result = await db.execute(select(func.count(Dataset.id)).where(*conditions))
         total = count_result.scalar() or 0
 
-        query = query.offset((page - 1) * page_size).limit(page_size)
+        query = (
+            select(Dataset).where(*conditions).order_by(desc(Dataset.created_at))
+            .offset((page - 1) * page_size).limit(page_size)
+        )
         result = await db.execute(query)
         return result.scalars().all(), total
 
@@ -580,11 +597,14 @@ class DataHierarchyService:
         dataset_id: UUID = None,
         severity: IssueSeverity = None,
         limit: int = None,
+        user: User | None = None,
     ) -> list[QualityIssue]:
-        """Get open quality issues"""
+        """Get open quality issues (only on datasets `user` may access)"""
         query = select(QualityIssue).options(selectinload(QualityIssue.dataset)).where(
             QualityIssue.status == IssueStatus.OPEN
         )
+        if user is not None:
+            query = query.where(scoped_to_accessible_datasets(QualityIssue.dataset_id, user))
 
         if dataset_id:
             query = query.where(QualityIssue.dataset_id == dataset_id)
@@ -605,6 +625,7 @@ class DataHierarchyService:
         db: AsyncSession,
         search_term: str,
         search_type: str = "all",  # all, domain, dataset, element
+        user: User | None = None,
     ) -> dict:
         """Search across the data hierarchy"""
         results = {
@@ -617,7 +638,8 @@ class DataHierarchyService:
             domain_result = await db.execute(
                 select(DataDomain).where(
                     DataDomain.name.ilike(f"%{search_term}%") |
-                    DataDomain.description.ilike(f"%{search_term}%")
+                    DataDomain.description.ilike(f"%{search_term}%"),
+                    *([visible_domains_clause(user)] if user is not None else []),
                 )
             )
             results["domains"] = domain_result.scalars().all()
@@ -627,7 +649,8 @@ class DataHierarchyService:
                 select(Dataset).where(
                     Dataset.name.ilike(f"%{search_term}%") |
                     Dataset.description.ilike(f"%{search_term}%") |
-                    Dataset.business_definition.ilike(f"%{search_term}%")
+                    Dataset.business_definition.ilike(f"%{search_term}%"),
+                    *([accessible_datasets_clause(user)] if user is not None else []),
                 )
             )
             results["datasets"] = dataset_result.scalars().all()
@@ -637,7 +660,9 @@ class DataHierarchyService:
                 select(DataElement).where(
                     DataElement.name.ilike(f"%{search_term}%") |
                     DataElement.description.ilike(f"%{search_term}%") |
-                    DataElement.business_definition.ilike(f"%{search_term}%")
+                    DataElement.business_definition.ilike(f"%{search_term}%"),
+                    *([DataElement.dataset_id.in_(select(Dataset.id).where(accessible_datasets_clause(user)))]
+                      if user is not None else []),
                 )
             )
             results["elements"] = element_result.scalars().all()

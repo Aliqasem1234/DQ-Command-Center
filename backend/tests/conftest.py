@@ -46,6 +46,15 @@ async def test_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         await session.close()
 
 
+@pytest.fixture(autouse=True)
+def expose_auth_tokens(monkeypatch):
+    # Tests complete verify/reset flows without SMTP by reading the token
+    # from the response, which the app only does when explicitly enabled.
+    from app.config import settings
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "DEV_EXPOSE_AUTH_TOKENS", True)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def disable_rate_limits():
     app.state.limiter.enabled = False

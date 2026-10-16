@@ -317,7 +317,10 @@ body {
     @apply text-primary-600 hover:text-primary-700 hover:underline transition-colors;
   }
 
-  .dark a {
+  /* :where() keeps this at element-level specificity, like the light rule
+     above, so components styled as buttons (<a class="btn-primary">) keep
+     their own text colour instead of turning into light-blue-on-blue. */
+  :where(.dark) a {
     @apply text-primary-400 hover:text-primary-300;
   }
 

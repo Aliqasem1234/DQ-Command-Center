@@ -17,11 +17,26 @@ from app.schemas.data_quality_rule import (
 )
 from app.services.data_quality_service import DataQualityService
 from app.services.monitoring_service import MonitoringService
+from sqlalchemy import select
+from app.core.dataset_access import get_accessible_dataset, visible_rules_clause
+from app.models.data_quality_rule import DataQualityRule
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data-quality", tags=["Data Quality"])
 
+
+async def _get_visible_rule(db: AsyncSession, rule_id: UUID, user: User):
+    """A rule is visible when its dataset is accessible to `user`, or - for a
+    rule with no dataset - when `user` created or owns it. Anything else is
+    reported as missing so rule IDs can't be probed."""
+    rule = await DataQualityService.get_rule(db, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    visible = await db.execute(select(DataQualityRule.id).where(DataQualityRule.id == rule_id, visible_rules_clause(user)))
+    if visible.first() is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return rule
 
 @router.post(
     "/rules",
@@ -36,6 +51,8 @@ async def create_rule(
     _: None = Depends(require_permission("data_quality:manage")),
 ):
     """Create a new data quality rule"""
+    if data.dataset_id is not None:
+        await get_accessible_dataset(db, data.dataset_id, current_user)
     rule = await DataQualityService.create_rule(db, data, current_user.id)
 
     if not rule:
@@ -64,7 +81,7 @@ async def list_rules(
 ):
     """List all data quality rules with optional filtering"""
     rules, total = await DataQualityService.list_rules(
-        db, dimension=dimension, status=status, page=page, page_size=page_size
+        db, dimension=dimension, status=status, page=page, page_size=page_size, user=current_user
     )
 
     items = [
@@ -95,10 +112,7 @@ async def get_rule(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get a specific data quality rule"""
-    rule = await DataQualityService.get_rule(db, rule_id)
-
-    if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
+    rule = await _get_visible_rule(db, rule_id, current_user)
 
     return {
         **rule.__dict__,
@@ -120,6 +134,7 @@ async def update_rule(
     _: None = Depends(require_permission("data_quality:manage")),
 ):
     """Update a data quality rule"""
+    await _get_visible_rule(db, rule_id, current_user)
     rule = await DataQualityService.update_rule(db, rule_id, data, current_user.id)
 
     if not rule:
@@ -144,6 +159,7 @@ async def delete_rule(
     _: None = Depends(require_permission("data_quality:manage")),
 ):
     """Delete a data quality rule"""
+    await _get_visible_rule(db, rule_id, current_user)
     success = await DataQualityService.delete_rule(db, rule_id, current_user.id)
 
     if not success:
@@ -166,10 +182,7 @@ async def get_rule_results(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get all execution results for a specific rule"""
-    # Verify rule exists
-    rule = await DataQualityService.get_rule(db, rule_id)
-    if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
+    await _get_visible_rule(db, rule_id, current_user)
 
     results, total = await DataQualityService.get_rule_results(
         db, rule_id, page=page, page_size=page_size
@@ -205,7 +218,7 @@ async def get_metrics(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get overall data quality metrics and dimension stats"""
-    metrics = await DataQualityService.calculate_metrics(db)
+    metrics = await DataQualityService.calculate_metrics(db, user=current_user)
     return metrics
 
 
@@ -222,7 +235,7 @@ async def get_trend(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get pass rate trend for the specified time period"""
-    trend = await MonitoringService.get_pass_rate_trend(db, days=days, dimension=dimension)
+    trend = await MonitoringService.get_pass_rate_trend(db, days=days, dimension=dimension, user=current_user)
     return {"days": days, "dimension": dimension, "trend": trend}
 
 
@@ -237,7 +250,7 @@ async def get_dimension_trends(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get pass rate trends for all dimensions"""
-    trends = await MonitoringService.get_dimension_trends(db, days=days)
+    trends = await MonitoringService.get_dimension_trends(db, days=days, user=current_user)
     return {"days": days, "dimensions": trends}
 
 
@@ -252,7 +265,7 @@ async def get_rule_performance(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get performance metrics for all rules"""
-    performance = await MonitoringService.get_rule_performance(db, limit=limit)
+    performance = await MonitoringService.get_rule_performance(db, limit=limit, user=current_user)
     return {"limit": limit, "rules": performance}
 
 
@@ -267,7 +280,7 @@ async def get_failing_rules(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get the top failing rules with recent failures"""
-    failing = await MonitoringService.get_failing_rules(db, limit=limit)
+    failing = await MonitoringService.get_failing_rules(db, limit=limit, user=current_user)
     return {"limit": limit, "failing_rules": failing}
 
 
@@ -281,5 +294,5 @@ async def get_health_score(
     _: None = Depends(require_permission("data_quality:view")),
 ):
     """Get overall data quality health score and status"""
-    health = await MonitoringService.get_health_score(db)
+    health = await MonitoringService.get_health_score(db, user=current_user)
     return health

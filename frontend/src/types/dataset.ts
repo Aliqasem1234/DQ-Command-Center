@@ -17,6 +17,7 @@ export interface Dataset {
   row_count: number | null;
   last_updated: string | null;
   status: string;
+  data_owner_id: string | null;
   created_at: string;
   updated_at: string;
 }
