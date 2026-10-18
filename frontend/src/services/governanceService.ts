@@ -16,8 +16,8 @@ export const governanceService = {
   },
 
   /** Exact-email lookup: the API never lists registered users. */
-  async findUserByEmail(email: string): Promise<{ id: string; full_name: string; email: string } | null> {
-    const response = await api.get<{ id: string; full_name: string; email: string }[]>(
+  async findUserByEmail(email: string): Promise<{ id: string; email: string } | null> {
+    const response = await api.get<{ id: string; email: string }[]>(
       '/v1/governance/assignable-users',
       { params: { email } },
     );

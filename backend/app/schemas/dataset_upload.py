@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 from uuid import UUID
 
@@ -53,7 +53,9 @@ class ScanResultResponse(BaseModel):
     checks_run: int
     issues_found: int
     issues_resolved: int
-    quality_score: float
+    custom_rules_run: int = 0
+    # None for an empty table (nothing to measure).
+    quality_score: Optional[float] = None
 
 
 class CleaningOperation(BaseModel):
@@ -62,8 +64,16 @@ class CleaningOperation(BaseModel):
     column: Optional[str] = None
     case: Optional[str] = None
     target_format: Optional[str] = None
+    source_format: Optional[str] = None
+    day_first: Optional[bool] = None
     strategy: Optional[str] = None
     value: Optional[Any] = None
+    target: Optional[str] = None
+    on_invalid: Optional[str] = None
+    decimal_separator: Optional[str] = None
+    mapping: Optional[Dict[str, str]] = None
+    case_sensitive: Optional[bool] = None
+    keep: Optional[str] = None
 
 
 class CleaningRequest(BaseModel):
@@ -74,7 +84,19 @@ class CleaningPreviewResponse(BaseModel):
     original_row_count: int
     result_row_count: int
     rows_changed: int
+    rows_modified: int = 0
+    rows_removed: int = 0
     values_changed: int
+    changed_columns: Dict[str, int] = {}
+    exact_duplicates_before: int = 0
+    exact_duplicates_after: int = 0
+    potential_duplicates_after: int = 0
+    operations_report: List[dict] = []
+    removes_rows: bool = False
+    # Same scoring as a scan, computed on the data before and after the
+    # operations. None when there is nothing to score (empty table).
+    quality_score_before: Optional[float] = None
+    quality_score_after: Optional[float] = None
     sample_changes: List[dict]
 
 

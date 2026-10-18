@@ -11,7 +11,7 @@ from app.models.data_hierarchy import Dataset, DatasetVersion, DatasetType, Data
 from app.services import file_storage_service
 from app.services.profiling_service import profile_dataset_version
 from app.services.dataframe_io import read_dataframe, write_dataframe
-from app.services.data_cleaning_service import apply_operations, diff_sample, CleaningOperationError
+from app.services.data_cleaning_service import apply_operations, diff_sample, public_summary, CleaningOperationError
 from app.utils.audit_logger import create_audit_log
 
 logger = logging.getLogger(__name__)
@@ -188,13 +188,68 @@ async def get_latest_version(db: AsyncSession, dataset_id: UUID) -> DatasetVersi
     return result.scalar_one_or_none()
 
 
-def preview_cleaning(version: DatasetVersion, operations: list[dict]) -> dict:
-    """Dry-run: apply operations to a copy of the version's real data and
-    return a diff summary + sample changed rows. Nothing is written."""
+async def _quality_context(db: AsyncSession, dataset_id: UUID):
+    from app.models.data_hierarchy import DataElement
+    from app.models.data_quality_rule import DataQualityRule
+    from app.services.quality_discovery_service import executable_rules
+    elements = (await db.execute(select(DataElement).where(DataElement.dataset_id == dataset_id))).scalars().all()
+    rules = (await db.execute(select(DataQualityRule).where(DataQualityRule.dataset_id == dataset_id))).scalars().all()
+    return {el.name: el for el in elements}, executable_rules(rules)
+
+
+async def preview_cleaning(db: AsyncSession, version: DatasetVersion, operations: list[dict]) -> dict:
+    """Dry-run: run the exact same transformation as apply_cleaning on a copy
+    of the version's data, and score the data before and after with the same
+    checks a scan uses. Nothing is written."""
+    from app.services.quality_discovery_service import evaluate_quality
     original = read_dataframe(version.file_path, version.file_format)
     result_df, summary = apply_operations(original, operations)
-    samples = diff_sample(original, result_df, limit=20)
-    return {**summary, "sample_changes": samples}
+    elements_by_name, custom_rules = await _quality_context(db, version.dataset_id)
+    before = evaluate_quality(original, elements_by_name, custom_rules)["quality_score"]
+    after = evaluate_quality(result_df, elements_by_name, custom_rules)["quality_score"]
+    return {
+        **public_summary(summary),
+        "quality_score_before": round(before, 1) if before is not None else None,
+        "quality_score_after": round(after, 1) if after is not None else None,
+        "sample_changes": diff_sample(summary, limit=20),
+    }
+
+
+async def restore_version(
+    db: AsyncSession, dataset: Dataset, source_version: DatasetVersion, current_user_id: UUID,
+) -> DatasetVersion:
+    """Make an earlier version current again by copying it into a NEW
+    version. Nothing is overwritten or deleted, so a restore can itself be
+    undone the same way."""
+    original = read_dataframe(source_version.file_path, source_version.file_format)
+    max_version = (await db.execute(
+        select(func.max(DatasetVersion.version_number)).where(DatasetVersion.dataset_id == dataset.id)
+    )).scalar() or 0
+    number = max_version + 1
+    relative_path = f"{dataset.id}/restored_v{number}.{source_version.file_format}"
+    write_dataframe(original, relative_path, source_version.file_format)
+    now = datetime.now(timezone.utc)
+    new_version = DatasetVersion(
+        dataset_id=dataset.id, version_number=number, file_path=relative_path,
+        original_filename=f"{dataset.name}_restored_from_v{source_version.version_number}.{source_version.file_format}",
+        file_format=source_version.file_format,
+        file_size_bytes=file_storage_service.resolve_path(relative_path).stat().st_size,
+        row_count=len(original), column_count=len(original.columns), is_original=False,
+        source_version_id=source_version.id,
+        cleaning_operations=[{"type": "restore", "from_version": source_version.version_number}],
+        rows_changed=0, values_changed=0, status=DatasetVersionStatus.UPLOADED,
+        created_by_id=current_user_id, created_at=now,
+    )
+    db.add(new_version)
+    await db.flush()
+    await create_audit_log(
+        db=db, user_id=current_user_id, action="RESTORE", entity_type="DatasetVersion",
+        entity_id=str(new_version.id), entity_name=f"{dataset.name} v{number}",
+        old_values={"source_version": source_version.version_number}, new_values={"version": number},
+    )
+    await db.commit()
+    await profile_dataset_version(db, new_version)
+    return new_version
 
 
 async def apply_cleaning(
@@ -247,7 +302,14 @@ async def apply_cleaning(
         db=db, user_id=current_user_id, action="CLEAN", entity_type="DatasetVersion",
         entity_id=str(new_version.id), entity_name=f"{dataset.name} v{new_version_number}",
         old_values={"source_version": source_version.version_number},
-        new_values={"operations": operations, "rows_changed": summary["rows_changed"], "values_changed": summary["values_changed"]},
+        # Operation types and columns only: parameters such as fill values or
+        # value mappings can contain data, and the audit log is read by
+        # administrators. The full operations are kept on the version itself.
+        new_values={
+            "operations": [{"type": op.get("type"), "columns": op.get("columns") or op.get("column") or "all"} for op in operations],
+            "rows_changed": summary["rows_changed"], "rows_removed": summary["rows_removed"],
+            "values_changed": summary["values_changed"],
+        },
     )
     await db.commit()
 

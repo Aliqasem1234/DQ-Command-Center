@@ -44,11 +44,13 @@ async def find_assignable_user(
     # full list of registered people and their emails. Sharing works by
     # exact email instead: you can only find someone whose address you
     # already know.
+    # Only what sharing needs: no name or other profile data for someone
+    # the caller merely knows the address of.
     result = await db.execute(
-        select(User.id, User.full_name, User.email)
+        select(User.id, User.email)
         .where(User.is_active.is_(True), func.lower(User.email) == email.strip().lower())
     )
-    return [{"id": str(r.id), "full_name": r.full_name, "email": r.email} for r in result.all()]
+    return [{"id": str(r.id), "email": r.email} for r in result.all()]
 
 
 def _managed_assignments_clause(user: User):

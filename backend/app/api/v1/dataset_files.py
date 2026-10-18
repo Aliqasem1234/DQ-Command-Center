@@ -219,7 +219,7 @@ async def preview_cleaning(
         raise HTTPException(status_code=404, detail="Dataset version not found")
     try:
         operations = [op.model_dump(exclude_none=True) for op in body.operations]
-        return dataset_upload_service.preview_cleaning(version, operations)
+        return await dataset_upload_service.preview_cleaning(db, version, operations)
     except CleaningOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -242,6 +242,23 @@ async def apply_cleaning(
         new_version = await dataset_upload_service.apply_cleaning(db, dataset, version, operations, current_user.id)
     except CleaningOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    new_version = await _get_version_with_creator(db, dataset_id, new_version.id)
+    return _version_to_response(new_version)
+
+
+@router.post("/{dataset_id}/versions/{version_id}/restore", response_model=DatasetVersionResponse, status_code=201, summary="Restore an earlier version as a new version")
+async def restore_version(
+    dataset_id: UUID,
+    version_id: UUID,
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_permission("datasets:manage")),
+):
+    dataset = await get_accessible_dataset(db, dataset_id, current_user)
+    version = await dataset_upload_service.get_version_or_404(db, dataset_id, version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Dataset version not found")
+    new_version = await dataset_upload_service.restore_version(db, dataset, version, current_user.id)
     new_version = await _get_version_with_creator(db, dataset_id, new_version.id)
     return _version_to_response(new_version)
 

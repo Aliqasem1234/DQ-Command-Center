@@ -17,14 +17,65 @@ from app.schemas.data_quality_rule import (
 )
 from app.services.data_quality_service import DataQualityService
 from app.services.monitoring_service import MonitoringService
-from sqlalchemy import select
+from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from app.core.dataset_access import get_accessible_dataset, visible_rules_clause
-from app.models.data_quality_rule import DataQualityRule
+from app.models.data_quality_rule import DataQualityRule, DataQualityResult
+from app.services import rule_engine, quality_discovery_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data-quality", tags=["Data Quality"])
 
+
+
+def _rule_dict(rule: DataQualityRule, last) -> dict:
+    executable = rule_engine.is_executable(rule.rule_type, rule.dataset_id, rule.target_field, rule.rule_definition)
+    return {
+        **rule.__dict__,
+        "owner_name": rule.owner.full_name if rule.owner else None,
+        "created_by_name": rule.created_by.full_name if rule.created_by else None,
+        # Whether the platform actually runs this rule; other rules are
+        # stored definitions only and are never presented as executed.
+        "executable": executable,
+        "last_result_status": last.status if last else None,
+        "last_result_at": last.execution_timestamp if last else None,
+        "last_records_checked": last.records_checked if last else None,
+        "last_records_failed": last.records_failed if last else None,
+    }
+
+
+async def _latest_results(db: AsyncSession, rule_ids: list) -> dict:
+    if not rule_ids:
+        return {}
+    ranked = (
+        select(DataQualityResult, func.row_number().over(
+            partition_by=DataQualityResult.rule_id, order_by=DataQualityResult.execution_timestamp.desc()
+        ).label("rn"))
+        .where(DataQualityResult.rule_id.in_(rule_ids))
+        .subquery()
+    )
+    latest = aliased(DataQualityResult, ranked)
+    rows = (await db.execute(select(latest).where(ranked.c.rn == 1))).scalars().all()
+    return {r.rule_id: r for r in rows}
+
+
+async def _rule_response(db: AsyncSession, rule: DataQualityRule) -> dict:
+    latest = await _latest_results(db, [rule.id])
+    return _rule_dict(rule, latest.get(rule.id))
+
+
+def _validate_executable(rule_type: str, dataset_id, target_field, definition) -> dict | None:
+    """Executable rule types must be complete and correct; anything else is
+    accepted as a documentation-only definition."""
+    if rule_type not in rule_engine.EXECUTABLE_RULE_TYPES:
+        return definition
+    if dataset_id is None:
+        raise HTTPException(status_code=422, detail="This rule type needs a dataset to run against.")
+    try:
+        return rule_engine.validate_definition(rule_type, target_field, definition)
+    except rule_engine.RuleDefinitionError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 async def _get_visible_rule(db: AsyncSession, rule_id: UUID, user: User):
     """A rule is visible when its dataset is accessible to `user`, or - for a
@@ -53,16 +104,13 @@ async def create_rule(
     """Create a new data quality rule"""
     if data.dataset_id is not None:
         await get_accessible_dataset(db, data.dataset_id, current_user)
+    data.rule_definition = _validate_executable(data.rule_type, data.dataset_id, data.target_field, data.rule_definition)
     rule = await DataQualityService.create_rule(db, data, current_user.id)
 
     if not rule:
         raise HTTPException(status_code=400, detail="Failed to create rule")
 
-    return {
-        **rule.__dict__,
-        "owner_name": rule.owner.full_name if rule.owner else None,
-        "created_by_name": rule.created_by.full_name if rule.created_by else None,
-    }
+    return await _rule_response(db, rule)
 
 
 @router.get(
@@ -84,14 +132,8 @@ async def list_rules(
         db, dimension=dimension, status=status, page=page, page_size=page_size, user=current_user
     )
 
-    items = [
-        {
-            **rule.__dict__,
-            "owner_name": rule.owner.full_name if rule.owner else None,
-            "created_by_name": rule.created_by.full_name if rule.created_by else None,
-        }
-        for rule in rules
-    ]
+    latest = await _latest_results(db, [r.id for r in rules])
+    items = [_rule_dict(rule, latest.get(rule.id)) for rule in rules]
 
     total_pages = (total + page_size - 1) // page_size
 
@@ -114,11 +156,7 @@ async def get_rule(
     """Get a specific data quality rule"""
     rule = await _get_visible_rule(db, rule_id, current_user)
 
-    return {
-        **rule.__dict__,
-        "owner_name": rule.owner.full_name if rule.owner else None,
-        "created_by_name": rule.created_by.full_name if rule.created_by else None,
-    }
+    return await _rule_response(db, rule)
 
 
 @router.put(
@@ -134,17 +172,21 @@ async def update_rule(
     _: None = Depends(require_permission("data_quality:manage")),
 ):
     """Update a data quality rule"""
-    await _get_visible_rule(db, rule_id, current_user)
+    existing = await _get_visible_rule(db, rule_id, current_user)
+    if (existing.rule_definition or {}).get("source") == "auto_discovery":
+        raise HTTPException(status_code=400, detail="Automatic checks are managed by scans and can't be edited.")
+    merged_type = data.rule_type or existing.rule_type
+    merged_field = data.target_field if data.target_field is not None else existing.target_field
+    merged_def = data.rule_definition if data.rule_definition is not None else existing.rule_definition
+    validated = _validate_executable(merged_type, existing.dataset_id, merged_field, merged_def)
+    if merged_type in rule_engine.EXECUTABLE_RULE_TYPES:
+        data.rule_definition = validated
     rule = await DataQualityService.update_rule(db, rule_id, data, current_user.id)
 
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    return {
-        **rule.__dict__,
-        "owner_name": rule.owner.full_name if rule.owner else None,
-        "created_by_name": rule.created_by.full_name if rule.created_by else None,
-    }
+    return await _rule_response(db, rule)
 
 
 @router.delete(
@@ -166,6 +208,25 @@ async def delete_rule(
         raise HTTPException(status_code=404, detail="Rule not found")
 
     return None
+
+
+@router.post(
+    "/rules/{rule_id}/run",
+    summary="Run an executable rule against the latest version of its dataset",
+)
+async def run_rule(
+    rule_id: UUID,
+    current_user: User = Depends(get_current_user_from_token),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_permission("data_quality:manage")),
+):
+    rule = await _get_visible_rule(db, rule_id, current_user)
+    if not rule_engine.is_executable(rule.rule_type, rule.dataset_id, rule.target_field, rule.rule_definition):
+        raise HTTPException(status_code=400, detail="This rule is a definition only and cannot be run.")
+    try:
+        return await quality_discovery_service.run_rule(db, rule)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get(

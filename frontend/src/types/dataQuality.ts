@@ -38,8 +38,25 @@ export interface DataQualityRule {
   created_by_name?: string;
   is_active: boolean;
   dataset_id?: string | null;
+  // Whether the platform runs this rule; others are definitions only.
+  executable?: boolean;
+  last_result_status?: 'passed' | 'failed' | 'error' | null;
+  last_result_at?: string | null;
+  last_records_checked?: number | null;
+  last_records_failed?: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RuleRunResult {
+  status: 'passed' | 'failed' | 'error';
+  error: string | null;
+  records_checked: number;
+  records_failed: number;
+  reasons: Record<string, number>;
+  failing_rows: number[];
+  version_number: number;
+  executed_at: string;
 }
 
 export interface CreateDataQualityRuleRequest {

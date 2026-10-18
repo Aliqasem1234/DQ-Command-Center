@@ -1,6 +1,5 @@
 import { RouterProvider } from 'react-router-dom';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './query/client';
+import { IdentityScopedQueryProvider } from './query/IdentityScopedQueryProvider';
 import { router } from './routes';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import './i18n/config';
@@ -8,9 +7,9 @@ import './i18n/config';
 export default function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <IdentityScopedQueryProvider>
         <RouterProvider router={router} />
-      </QueryClientProvider>
+      </IdentityScopedQueryProvider>
     </ErrorBoundary>
   );
 }

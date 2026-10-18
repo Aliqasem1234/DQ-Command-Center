@@ -76,6 +76,12 @@ export const datasetFileService = {
     return response.data;
   },
 
+  /** Copy an earlier version into a new version (nothing is overwritten). */
+  async restoreVersion(datasetId: string, versionId: string): Promise<DatasetVersion> {
+    const response = await api.post<DatasetVersion>(`/v1/dataset-files/${datasetId}/versions/${versionId}/restore`);
+    return response.data;
+  },
+
   async downloadFile(datasetId: string, versionId: string, filename: string): Promise<void> {
     // The download endpoint requires the same Authorization header every
     // other request uses, so a plain <a href> can't hit it directly (the

@@ -1,0 +1,15 @@
+{
+  "name": "dq-command-center-e2e",
+  "private": true,
+  "description": "Real-browser and API tests against a running stack. See README.md.",
+  "scripts": {
+    "isolation": "node two_user_isolation.js",
+    "cleaning": "node cleaning_flow.js",
+    "new-user": "node newuser_flow.js",
+    "sweep": "node endpoint_sweep.js",
+    "dark": "node dark_pages.js"
+  },
+  "dependencies": {
+    "playwright-core": "1.48.2"
+  }
+}

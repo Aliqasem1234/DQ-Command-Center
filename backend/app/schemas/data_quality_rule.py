@@ -51,6 +51,11 @@ class DataQualityRuleResponse(DataQualityRuleBase):
     updated_at: datetime
     owner_name: Optional[str] = None
     created_by_name: Optional[str] = None
+    executable: bool = False
+    last_result_status: Optional[str] = None
+    last_result_at: Optional[datetime] = None
+    last_records_checked: Optional[int] = None
+    last_records_failed: Optional[int] = None
 
     class Config:
         from_attributes = True

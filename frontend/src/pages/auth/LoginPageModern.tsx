@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
 import { AlertCircle, Eye, EyeOff, Loader } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -17,6 +18,7 @@ export function LoginPageModern() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<LoginError | null>(null);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +31,10 @@ export function LoginPageModern() {
     }
     setLoading(false);
   };
+
+  // Already signed in (e.g. in another tab): go to the app instead of
+  // showing a login form for a session that exists.
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return (
     <div className="card-lg !rounded-2xl !shadow-lg">

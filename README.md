@@ -6,13 +6,19 @@ standard DQ dimensions (accuracy, completeness, consistency, validity,
 uniqueness, timeliness); track quality results and health scores; assign
 ownership/stewardship and governance policies; and audit every change.
 
-You can also upload a real CSV or Excel file to create a dataset directly:
-it's automatically profiled (real per-column stats, not estimates) and
-scanned for quality issues, cleaning operations can be previewed before
-they're applied, and every cleaning run produces a new, separately
-downloadable version rather than overwriting the original. See
-ARCHITECTURE.md's "Real data ingestion, profiling, and cleaning" section
-for how it works and its current boundaries.
+Upload a real CSV or Excel file to create a dataset: it is profiled
+automatically (real per-column statistics), scanned for quality issues on
+request, and scored. Deterministic cleaning operations are previewed
+(row by row, with a before/after quality score) before they are saved, and
+every cleaning run creates a new version - earlier versions can be
+downloaded or restored. Executable quality rules (required, unique, e-mail,
+numeric range, allowed values, date range) run on every scan or on demand.
+Every registered user works only on their own data; administration is
+separate.
+
+**Start here:** [PROJECT_OWNER_GUIDE.md](PROJECT_OWNER_GUIDE.md) explains the
+whole project - architecture, database, security, operation, backups and
+troubleshooting.
 
 ## Stack
 
@@ -30,6 +36,11 @@ run it.
 
 | Doc | Purpose |
 |---|---|
+| [PROJECT_OWNER_GUIDE.md](PROJECT_OWNER_GUIDE.md) | **Owner guide**: everything needed to understand, run and maintain the project |
+| [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) | What is implemented and how thoroughly it is verified |
+| [docs/DATA_CLEANING_GUIDE.md](docs/DATA_CLEANING_GUIDE.md) | Every cleaning operation and quality rule |
+| [docs/SECURITY_AND_PRIVACY.md](docs/SECURITY_AND_PRIVACY.md) | Verified security controls and remaining risks |
+| [docs/TESTING_AND_RELEASE.md](docs/TESTING_AND_RELEASE.md) | Test suites, browser tests, release checklist |
 | [QUICKSTART.md](QUICKSTART.md) | Get the full stack running locally in a few minutes |
 | [ADMIN_SETUP_GUIDE.md](ADMIN_SETUP_GUIDE.md) | How the first administrator account is created (no hardcoded credentials) |
 | [TESTING_GUIDE.md](TESTING_GUIDE.md) | Backend/frontend test suites, the Windows Docker test script, manual QA checklist |
@@ -39,19 +50,13 @@ run it.
 
 ## Status
 
-This codebase has been audited and repaired against a real, running Docker
-stack (Postgres + FastAPI + Vite + nginx), not just read. As of this pass:
+Verified on 2026-10-18 against a running Docker stack: 147 backend tests,
+15 frontend tests, type check and production build pass, and real-browser
+suites (two-user isolation, cleaning/versioning/rules, dark-theme audit)
+pass. See [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) for the
+honest feature-by-feature status and the owner guide's "Current risks"
+section before treating this as production-ready (notably: no HTTPS or
+SMTP yet).
 
-- The backend actually boots, migrates, and serves requests (it previously
-  could not - see the "what was broken" note in ARCHITECTURE.md).
-- RBAC works correctly for both super-admin and non-admin roles.
-- Login, dashboard, CRUD for departments/users/roles/data quality rules,
-  governance assignments/policies, and the audit trail are wired to real
-  data end-to-end and were verified in an actual browser session.
-- The backend test suite (47 tests) passes.
-- English and Swedish translations are complete and symmetric; there is no
-  Arabic or RTL code left in the project.
-
-Known remaining gaps are tracked honestly in SECURITY.md and
-ARCHITECTURE.md rather than glossed over - please read those before
-treating this as a finished product.
+Older reports from an early AI-assisted session were moved to
+`docs/archive/` because several of their claims proved inaccurate.

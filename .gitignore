@@ -100,3 +100,12 @@ private/
 *.tar.gz
 *.zip
 !dq-command-center-*.zip
+
+# Generated / machine-specific (added 2026-10-18)
+*.tsbuildinfo
+desktop.ini
+
+# Database dumps and backups contain user data and password hashes -
+# never commit them (scripts/backup-db.ps1 writes to ./backups)
+backups/
+*.dump

@@ -39,8 +39,9 @@ through Roles → assign, once one exists.
 1. Log in with the account from Option A or B.
 2. Confirm you can reach Users, Roles, Departments, and Audit Log in the
    sidebar (these require the `users:manage`/`roles:manage`/
-   `departments:manage`/`audit:view` permissions, which only Super Admin
-   and Admin roles hold).
+   `departments:manage`/`audit:view` permissions: Super Admin holds all
+   four; the Admin role holds only `users:manage` and `audit:view`, so an
+   Admin sees Users and the system log but not Roles or Departments).
 3. Log in as a non-admin user (e.g. one of the demo users if you seeded
    demo data - see below) and confirm those same routes return 403 rather
    than data. Both directions matter: a working admin account that can't

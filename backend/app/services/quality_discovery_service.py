@@ -27,6 +27,7 @@ from app.models.data_quality_rule import (
     DataQualityRule, DataQualityResult, DataQualityDimension, RuleSeverity, RuleStatus, RuleTargetLevel,
 )
 from app.services.dataframe_io import read_dataframe
+from app.services import rule_engine
 from app.services.profiling_service import EMAIL_RE, infer_column_type
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ def _detect_checks(df: pd.DataFrame, elements_by_name: dict[str, DataElement]) -
     return findings
 
 
-def compute_quality_score(df: pd.DataFrame, findings: list[dict]) -> float:
+def compute_quality_score(df: pd.DataFrame, findings: list[dict]) -> float | None:
     """Share of cells not affected by any failing check, as a percentage.
 
     Each finding names the rows it affects: a column check marks that
@@ -213,8 +214,10 @@ def compute_quality_score(df: pd.DataFrame, findings: list[dict]) -> float:
     once. (Previously the per-check counts were summed, mixing units - one
     duplicate row counted as a single cell - and double-counting overlaps.)
     """
+    # An empty table has nothing to measure: no score rather than a
+    # misleading 100%.
     if not len(df) or not len(df.columns):
-        return 100.0
+        return None
     bad = pd.DataFrame(False, index=df.index, columns=df.columns)
     for finding in findings:
         rows = finding.get("bad_rows", [])
@@ -226,6 +229,109 @@ def compute_quality_score(df: pd.DataFrame, findings: list[dict]) -> float:
             bad.loc[rows, finding["element_name"]] = True
     bad_cells = int(bad.values.sum())
     return 100.0 - bad_cells / bad.size * 100
+
+
+def executable_rules(rules) -> list:
+    """User-defined rules that can actually be run (see rule_engine)."""
+    return [
+        r for r in rules
+        if r.status == RuleStatus.ACTIVE and rule_engine.is_executable(r.rule_type, r.dataset_id, r.target_field, r.rule_definition)
+    ]
+
+
+def evaluate_quality(df: pd.DataFrame, elements_by_name: dict, custom_rules: list) -> dict:
+    """Run every automatic check and every executable user rule against a
+    dataframe, without touching the database. Used by the scan and by the
+    cleaning preview's before/after comparison, so both use one definition
+    of quality."""
+    auto = [f for f in _detect_checks(df, elements_by_name) if f["bad_count"] > 0]
+    custom = []
+    for rule in custom_rules:
+        evaluation = rule_engine.evaluate_rule(df, rule.rule_type, rule.target_field, rule.rule_definition)
+        custom.append((rule, evaluation))
+    failing_custom = [
+        {"element_name": rule.target_field, "bad_rows": ev["bad_rows"]}
+        for rule, ev in custom if ev["status"] == "failed"
+    ]
+    return {
+        "auto_findings": auto,
+        "custom": custom,
+        "quality_score": compute_quality_score(df, auto + failing_custom),
+    }
+
+
+async def _reconcile_issue(db, rule, dataset_id, failing: bool, ratio: float, description: str, now) -> None:
+    issue = (await db.execute(
+        select(QualityIssue).where(QualityIssue.rule_id == rule.id, QualityIssue.status != IssueStatus.RESOLVED)
+    )).scalar_one_or_none()
+    if failing:
+        if issue is None:
+            db.add(QualityIssue(
+                rule_id=rule.id, dataset_id=dataset_id, severity=_severity_for_ratio(ratio), status=IssueStatus.OPEN,
+                description=description, detected_at=now, created_at=now, updated_at=now,
+            ))
+        else:
+            issue.severity = _severity_for_ratio(ratio)
+            issue.description = description
+            issue.updated_at = now
+    elif issue is not None:
+        issue.status = IssueStatus.RESOLVED
+        issue.resolved_at = now
+        issue.resolution_notes = "Automatically resolved - the rule passed on the latest run."
+        issue.updated_at = now
+
+
+def _custom_description(rule, evaluation: dict) -> str:
+    reasons = ", ".join(f"{n} {why}" for why, n in evaluation["reasons"].items())
+    rows = [int(r) + 1 for r in evaluation["bad_rows"][:10]]
+    return (f"Rule '{rule.name}' failed for {evaluation['records_failed']} of {evaluation['records_checked']} "
+            f"values in '{rule.target_field}' ({reasons}). First failing rows: {rows}.")
+
+
+async def record_rule_evaluation(db, rule, dataset_id, evaluation: dict, now) -> None:
+    """Store a result row (counts + failing row numbers, never cell values)
+    and open/resolve the rule's issue."""
+    checked, failed = evaluation["records_checked"], evaluation["records_failed"]
+    db.add(DataQualityResult(
+        rule_id=rule.id, execution_timestamp=now, status=evaluation["status"],
+        records_checked=checked, records_passed=checked - failed, records_failed=failed,
+        error_details=rule_engine.result_details(evaluation), created_at=now,
+    ))
+    if evaluation["status"] == "error":
+        return
+    await _reconcile_issue(
+        db, rule, dataset_id, evaluation["status"] == "failed",
+        failed / checked if checked else 0, _custom_description(rule, evaluation), now,
+    )
+
+
+async def latest_version(db, dataset_id) -> DatasetVersion | None:
+    return (await db.execute(
+        select(DatasetVersion).where(DatasetVersion.dataset_id == dataset_id)
+        .order_by(DatasetVersion.version_number.desc()).limit(1)
+    )).scalar_one_or_none()
+
+
+async def run_rule(db, rule) -> dict:
+    """Run one executable rule against the latest version of its dataset."""
+    version = await latest_version(db, rule.dataset_id)
+    if version is None:
+        raise ValueError("The rule's dataset has no uploaded file to check.")
+    df = read_dataframe(version.file_path, version.file_format)
+    evaluation = rule_engine.evaluate_rule(df, rule.rule_type, rule.target_field, rule.rule_definition)
+    now = datetime.now(timezone.utc)
+    await record_rule_evaluation(db, rule, rule.dataset_id, evaluation, now)
+    await db.commit()
+    return {
+        "status": evaluation["status"],
+        "error": evaluation["error"],
+        "records_checked": evaluation["records_checked"],
+        "records_failed": evaluation["records_failed"],
+        "reasons": evaluation["reasons"],
+        "failing_rows": [int(r) + 1 for r in evaluation["bad_rows"][:20]],
+        "version_number": version.version_number,
+        "executed_at": now.isoformat(),
+    }
 
 
 async def scan_dataset_version(db: AsyncSession, version: DatasetVersion, current_user_id: UUID) -> dict:
@@ -364,9 +470,28 @@ async def scan_dataset_version(db: AsyncSession, version: DatasetVersion, curren
         rules_passed += 1
         total_rules_executed += 1
 
+    # User-defined executable rules for this dataset.
+    custom_rules = executable_rules(existing_rules)
+    custom_results = []
+    for rule in custom_rules:
+        evaluation = rule_engine.evaluate_rule(df, rule.rule_type, rule.target_field, rule.rule_definition)
+        await record_rule_evaluation(db, rule, dataset.id, evaluation, now)
+        custom_results.append(evaluation)
+        if evaluation["status"] == "error":
+            continue
+        total_rules_executed += 1
+        if evaluation["status"] == "failed":
+            rules_failed += 1
+        else:
+            rules_passed += 1
+
     overall_pass_rate = (rules_passed / total_rules_executed * 100) if total_rules_executed else 100.0
 
-    quality_score = compute_quality_score(df, list(findings_by_key.values()))
+    quality_score = compute_quality_score(df, list(findings_by_key.values()) + [
+        {"element_name": rule.target_field, "bad_rows": ev["bad_rows"]}
+        for rule, ev in zip(custom_rules, custom_results) if ev["status"] == "failed"
+    ])
+    rounded_score = round(quality_score, 1) if quality_score is not None else None
 
     db.add(QualityCheckRun(
         dataset_id=dataset.id,
@@ -375,18 +500,19 @@ async def scan_dataset_version(db: AsyncSession, version: DatasetVersion, curren
         rules_passed=rules_passed,
         rules_failed=rules_failed,
         overall_pass_rate=overall_pass_rate,
-        quality_score=round(quality_score, 1),
+        quality_score=rounded_score,
         status="success",
         created_at=now,
     ))
 
-    version.quality_score = round(quality_score, 1)
+    version.quality_score = rounded_score
     version.status = DatasetVersionStatus.SCANNED
     await db.commit()
 
     return {
         "checks_run": total_rules_executed,
-        "issues_found": len(findings_by_key),
+        "issues_found": len(findings_by_key) + sum(1 for ev in custom_results if ev["status"] == "failed"),
+        "custom_rules_run": len(custom_results),
         "issues_resolved": sum(1 for k in auto_rules_by_key if k not in findings_by_key),
         "quality_score": version.quality_score,
     }

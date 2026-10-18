@@ -295,7 +295,7 @@ async def test_manager_can_pick_assignees_but_not_claim_foreign_datasets(client,
     picker = await client.get("/api/v1/governance/assignable-users?email=OWNER@example.com", headers=mgr)
     assert picker.status_code == 200
     assert [u["email"] for u in picker.json()] == ["owner@example.com"]
-    assert {"id", "full_name", "email"} == set(picker.json()[0].keys())
+    assert {"id", "email"} == set(picker.json()[0].keys())
 
     ds = (await upload(client, owner))["dataset_id"]
     claim = {"dataset_id": ds, "user_id": str(manager.id), "role": "owner"}

@@ -5,6 +5,7 @@ import {
   UpdateDataQualityRuleRequest,
   DataQualityRuleListResponse,
   DataQualityMetrics,
+  RuleRunResult,
 } from '../types/dataQuality';
 
 export const dataQualityService = {
@@ -55,6 +56,12 @@ export const dataQualityService = {
   },
 
   // Metrics
+  /** Run an executable rule against the latest version of its dataset. */
+  runRule: async (ruleId: string): Promise<RuleRunResult> => {
+    const response = await api.post<RuleRunResult>(`/v1/data-quality/rules/${ruleId}/run`);
+    return response.data;
+  },
+
   getMetrics: async (): Promise<DataQualityMetrics> => {
     const response = await api.get('/v1/data-quality/metrics');
     return response.data;

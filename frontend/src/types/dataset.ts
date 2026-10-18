@@ -85,21 +85,49 @@ export interface ScanResult {
 }
 
 export interface CleaningOperation {
-  type: 'trim_whitespace' | 'collapse_whitespace' | 'standardize_case' | 'normalize_dates' | 'remove_duplicate_rows' | 'fill_missing';
+  type:
+    | 'trim_whitespace' | 'collapse_whitespace' | 'remove_control_characters' | 'standardize_case'
+    | 'normalize_dates' | 'convert_type' | 'map_values' | 'remove_duplicate_rows' | 'fill_missing';
   columns?: string[] | 'all';
   column?: string;
   case?: 'lower' | 'upper' | 'title';
   target_format?: string;
+  source_format?: string;
+  day_first?: boolean;
   strategy?: 'drop_row' | 'fill_value' | 'fill_mean' | 'fill_median' | 'fill_mode';
   value?: string;
+  target?: 'integer' | 'decimal' | 'boolean';
+  on_invalid?: 'keep' | 'set_missing';
+  decimal_separator?: '.' | ',';
+  mapping?: Record<string, string>;
+  case_sensitive?: boolean;
+  keep?: 'first' | 'last';
+}
+
+export interface CleaningOperationReport {
+  type: string;
+  rows_removed: number;
+  skipped: number;
+  skipped_examples: { column: string; value: string; reason: string }[];
+  note?: string;
 }
 
 export interface CleaningPreview {
   original_row_count: number;
   result_row_count: number;
   rows_changed: number;
+  rows_modified: number;
+  rows_removed: number;
   values_changed: number;
-  sample_changes: { before: Record<string, unknown>; after: Record<string, unknown> }[];
+  changed_columns: Record<string, number>;
+  exact_duplicates_before: number;
+  exact_duplicates_after: number;
+  potential_duplicates_after: number;
+  operations_report: CleaningOperationReport[];
+  removes_rows: boolean;
+  quality_score_before: number | null;
+  quality_score_after: number | null;
+  sample_changes: { row: number; before: Record<string, unknown>; after: Record<string, unknown> | null }[];
 }
 
 export interface VersionQualitySummary {
