@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.role import UserRole, Role, RolePermission
-from app.core.seed_secure import SYSTEM_PERMISSIONS
+from app.core.seed_secure import DEMO_EMAILS, SYSTEM_PERMISSIONS
 
 ALL_PERMISSION_CODES = [p["code"] for p in SYSTEM_PERMISSIONS]
 from app.core.security import (
@@ -155,6 +155,11 @@ async def login_user(
     user = result.scalar_one_or_none()
 
     if user is None:
+        raise ValueError("Invalid email or password")
+
+    # Development demo accounts must never be usable in production, even if a
+    # development database is reused. Same message as an unknown account.
+    if settings.ENVIRONMENT == "production" and email in DEMO_EMAILS:
         raise ValueError("Invalid email or password")
 
     if not user.is_active:

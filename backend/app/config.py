@@ -1,14 +1,31 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 from typing import List
+from urllib.parse import unquote, urlsplit
 
 VALID_ENVIRONMENTS = {"development", "test", "production"}
 
+# Placeholder values that older versions of this project shipped as code
+# defaults or in .env.example. They are refused everywhere for the JWT secret
+# and in production for every secret.
 INSECURE_DEFAULTS = {
     "change-me",
     "dev-secret-key-change-in-production",
+    "change-this-to-a-random-secret-key-at-least-32-chars",
     "",
 }
+
+# Words that mark a database password as a development/example value.
+WEAK_DB_PASSWORD_MARKERS = ("dev", "pass", "change", "example", "secret", "test", "demo")
+MIN_SECRET_LENGTH = 32
+MIN_PRODUCTION_DB_PASSWORD_LENGTH = 16
+
+
+def _database_password(url: str) -> str:
+    try:
+        return unquote(urlsplit(url).password or "")
+    except ValueError:
+        return ""
 
 
 class Settings(BaseSettings):
@@ -16,14 +33,17 @@ class Settings(BaseSettings):
     APP_NAME: str = "DQ Command Center"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "DEBUG"
-    SECRET_KEY: str = "change-me"
+    # Validated in production but not otherwise used by the code today.
+    SECRET_KEY: str = ""
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://dqadmin:[REDACTED-DEV-CREDENTIAL]@postgres:5432/dq_command_center"
-    DATABASE_URL_SYNC: str = "postgresql://dqadmin:[REDACTED-DEV-CREDENTIAL]@postgres:5432/dq_command_center"
+    # Database - no default: credentials must come from the environment (.env
+    # locally, real secrets in production). Startup fails if they are missing.
+    DATABASE_URL: str
+    DATABASE_URL_SYNC: str
 
-    # JWT
-    JWT_SECRET_KEY: str = "dev-secret-key-change-in-production"
+    # JWT - no default; must be a random value of at least 32 characters in
+    # every environment, otherwise anyone could forge tokens.
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -78,20 +98,37 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
     @model_validator(mode="after")
+    def _require_secrets(self) -> "Settings":
+        # Docker Compose turns an unset ${VAR} into an empty string, so
+        # "required" alone is not enough: refuse empty values explicitly.
+        for name in ("DATABASE_URL", "DATABASE_URL_SYNC"):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must be set (see .env.example).")
+        if self.JWT_SECRET_KEY in INSECURE_DEFAULTS or len(self.JWT_SECRET_KEY) < MIN_SECRET_LENGTH:
+            raise ValueError(
+                "JWT_SECRET_KEY must be set to a random value of at least 32 characters "
+                "(python -c \"import secrets; print(secrets.token_hex(32))\")."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _reject_insecure_production_secrets(self) -> "Settings":
         if self.ENVIRONMENT == "production":
-            if self.SECRET_KEY in INSECURE_DEFAULTS or len(self.SECRET_KEY) < 32:
+            if self.SECRET_KEY in INSECURE_DEFAULTS or len(self.SECRET_KEY) < MIN_SECRET_LENGTH:
                 raise ValueError(
                     "SECRET_KEY must be set to a random value of at least 32 characters in production."
                 )
-            if self.JWT_SECRET_KEY in INSECURE_DEFAULTS or len(self.JWT_SECRET_KEY) < 32:
-                raise ValueError(
-                    "JWT_SECRET_KEY must be set to a random value of at least 32 characters in production."
-                )
-            if "[REDACTED-DEV-CREDENTIAL]" in self.DATABASE_URL or "[REDACTED-DEV-CREDENTIAL]" in self.DATABASE_URL_SYNC:
-                raise ValueError(
-                    "DATABASE_URL still contains the development default password in production."
-                )
+            for name in ("DATABASE_URL", "DATABASE_URL_SYNC"):
+                password = _database_password(getattr(self, name))
+                if (
+                    len(password) < MIN_PRODUCTION_DB_PASSWORD_LENGTH
+                    or any(marker in password.lower() for marker in WEAK_DB_PASSWORD_MARKERS)
+                ):
+                    raise ValueError(
+                        f"{name} must use a random database password of at least "
+                        f"{MIN_PRODUCTION_DB_PASSWORD_LENGTH} characters in production "
+                        "(development and example passwords are refused)."
+                    )
             if self.DEV_EXPOSE_AUTH_TOKENS:
                 raise ValueError("DEV_EXPOSE_AUTH_TOKENS must be false in production.")
             if "*" in self.cors_origins_list:
@@ -102,7 +139,8 @@ class Settings(BaseSettings):
                 raise ValueError("LOG_LEVEL=DEBUG is not allowed in production (debug logs can carry request data).")
         return self
 
-    model_config = {"env_file": ".env", "case_sensitive": True}
+    # hide_input_in_errors: a validation error must never echo secrets into logs.
+    model_config = {"env_file": ".env", "case_sensitive": True, "hide_input_in_errors": True}
 
 
 settings = Settings()

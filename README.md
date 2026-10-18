@@ -50,7 +50,7 @@ run it.
 
 ## Status
 
-Verified on 2026-10-18 against a running Docker stack: 147 backend tests,
+Verified on 2026-10-18 against a running Docker stack: 164 backend tests,
 15 frontend tests, type check and production build pass, and real-browser
 suites (two-user isolation, cleaning/versioning/rules, dark-theme audit)
 pass. See [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) for the

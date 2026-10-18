@@ -176,7 +176,7 @@ docker-compose exec backend pytest tests/ -v --tb=short
 - Click "Register"
 - Fill form:
   - Email: testuser@example.com
-  - Password: TestPassword123!
+  - Password: [REDACTED-DEV-CREDENTIAL]
   - First Name: Test
   - Last Name: User
 - Submit
@@ -184,7 +184,7 @@ docker-compose exec backend pytest tests/ -v --tb=short
 
 **2. Login as User**
 - Email: testuser@example.com
-- Password: TestPassword123!
+- Password: [REDACTED-DEV-CREDENTIAL]
 - **Expected**: Login success, redirected to dashboard
 
 **3. Access Permitted Pages**

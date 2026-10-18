@@ -45,9 +45,15 @@ What the application actually guarantees today, how each control is implemented,
 
 ## 4. Configuration safety (verified)
 
-When `ENVIRONMENT=production`, startup **refuses** any of these:
-- default or short (<32 character) `SECRET_KEY` / `JWT_SECRET_KEY`;
-- the development DB password;
+In **every** environment, `DATABASE_URL`, `DATABASE_URL_SYNC` and `JWT_SECRET_KEY` have no code default. Startup fails if they are:
+- missing or empty (Docker Compose turns an unset `${VAR}` into an empty string, so that's checked explicitly);
+- for `JWT_SECRET_KEY`, shorter than 32 characters or one of the placeholders earlier versions shipped.
+
+Configuration errors never echo the submitted values (`hide_input_in_errors`), so a failed start can't leak a secret into the logs.
+
+When `ENVIRONMENT=production`, startup also **refuses** any of these:
+- default or short (<32 character) `SECRET_KEY`;
+- a database password under 16 characters, or one containing a development/example marker (`dev`, `pass`, `change`, `example`, `secret`, `test`, `demo`);
 - `DEV_EXPOSE_AUTH_TOKENS=true`;
 - `CORS_ORIGINS=*`;
 - `LOG_LEVEL=DEBUG`;
@@ -55,7 +61,7 @@ When `ENVIRONMENT=production`, startup **refuses** any of these:
 
 Production also:
 - turns off `/docs`, `/redoc` and `/openapi.json`;
-- never seeds demo users.
+- never seeds demo users, and **refuses login for the development demo accounts** (`demo1–3@…`) even if a development database is reused. The answer is the same as for an unknown account (`test_demo_accounts_cannot_sign_in_in_production`).
 
 `SECRET_KEY` is validated but not otherwise used by the code today.
 
@@ -88,7 +94,7 @@ Production also:
 | Priority | Risk | Status |
 |---|---|---|
 | Critical before external access | No HTTPS | open (deployment task) |
-| High | Test and demo accounts with publicly known passwords still active | open. Tool: `python -m app.tools.prepare_external_testing`, plus manual deactivation of `qa.*@example.com` test accounts |
+| High | Test and demo accounts with publicly known passwords still active in the development database | open. Tool: `python -m app.tools.prepare_external_testing --apply` (older browser-test passwords via `--candidates-file`, kept outside the repo). Demo accounts are already refused in production |
 | High | No SMTP: password reset and verification need an operator | open |
 | Medium | Tokens in `localStorage` (XSS impact) | mitigated by CSP |
 | Medium | Lockout can be triggered by anyone who knows an e-mail | accepted for beta |
@@ -103,3 +109,18 @@ Production also:
 3. Deactivate known-credential accounts (see `PROJECT_OWNER_GUIDE.md` → Owner checklist).
 4. Remove `INIT_ADMIN_PASSWORD` from `.env` once the admin exists, and rotate any secret that has been shared.
 5. Configure SMTP, or accept operator-issued password resets.
+
+## 10. Test credentials vs production secrets
+
+| Kind | Where it lives | Rule |
+|---|---|---|
+| **Production / real secrets**: DB password, `JWT_SECRET_KEY`, `SECRET_KEY`, `INIT_ADMIN_PASSWORD`, SMTP password | `.env` (git-ignored, never committed) or a secret store | Never in code, docs, tests, scripts, examples or logs. No code defaults. Generate randomly; rotate if ever shared |
+| **Test-only credentials**: fixed passwords in `backend/tests/` | the test files | Used only against a throw-away in-memory SQLite database. Must never be used for a real account. `prepare_external_testing` flags any real account that uses one |
+| **Browser test accounts** (`e2e/`) | generated at run time | A fresh random password per run, never stored or printed |
+| **Demo accounts** (development seed) | development database only | Random passwords, nobody can sign in; refused at login in production |
+| **Placeholders** in `.env.example` and docs | the repository | Only obviously fake values (`change-this-…`, `<long random>`, `[REDACTED-DEV-CREDENTIAL]`). The backend refuses the JWT placeholder at startup |
+
+**Legacy development credentials.** Earlier versions shipped a default database password and fixed admin, demo and browser-test passwords in code, docs and scripts.
+- All of them have been removed from the source code, and none of them is used by the current configuration.
+- Anything that has ever been committed must be treated as public, even after a history rewrite, because old clones and forks may still hold it.
+- If a real secret is ever committed: **rotate it first**, then consider cleaning history (`git filter-repo --replace-text`, with a verified backup and a lease-protected push).

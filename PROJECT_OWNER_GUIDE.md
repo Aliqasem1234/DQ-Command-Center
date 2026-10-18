@@ -81,7 +81,7 @@ flowchart LR
 | `backend/app/config.py` | Settings read from environment variables, plus production safety checks | ⚠ Don't weaken the checks |
 | `backend/app/models/` | Database tables as Python classes | ⚠ Any change needs a new Alembic migration |
 | `backend/alembic/versions/` | Migrations `001`–`012` | ⛔ **Never edit or delete an applied migration**; add a new one |
-| `backend/tests/` | pytest tests (147) | Yes, add more |
+| `backend/tests/` | pytest tests (164) | Yes, add more |
 | `backend/app/tools/prepare_external_testing.py` | Finds and deactivates known-password accounts | Use as documented |
 | `frontend/src/pages/` | One folder per page | Yes |
 | `frontend/src/services/` | API calls | Yes |
@@ -189,7 +189,9 @@ The verified controls, briefly. Details and evidence are in [docs/SECURITY_AND_P
 | CORS | Explicit origins from `CORS_ORIGINS` (dev) or `PROD_CORS_ORIGINS` (prod); `*` refused in production |
 | API docs | `/docs` is available in development only; production disables it |
 | Logs | No passwords, tokens or (for cleaning and rule results) cell values |
-| Production config | Refuses weak or default secrets, DEBUG logging, `*` CORS, token echo and unknown `ENVIRONMENT` |
+| Required secrets | `DATABASE_URL`, `DATABASE_URL_SYNC` and `JWT_SECRET_KEY` have **no code defaults**. The backend refuses to start in any environment if they are missing, empty or a known placeholder, and its error messages never echo the values |
+| Production config | Refuses weak or default secrets, short or dev-looking database passwords, DEBUG logging, `*` CORS, token echo and unknown `ENVIRONMENT` |
+| Demo accounts | Development-only, with random passwords; login refuses them in production even if a development database is reused |
 
 **Recommendations (not yet done):**
 - HTTPS (required before external access);
@@ -208,6 +210,12 @@ The verified controls, briefly. Details and evidence are in [docs/SECURITY_AND_P
 - All secrets live in `.env`, which is git-ignored and has never been committed.
 - Rotate a secret by changing it in `.env` and recreating the backend. Changing `JWT_SECRET_KEY` logs everyone out.
 - Don't paste `.env` or `docker compose config` output anywhere: the latter prints the database password.
+
+**Test credentials vs real secrets.**
+- *Real secrets* (database password, JWT and secret keys, admin password, SMTP password) exist only in your `.env` or your production secret store. They must never appear in code, docs, tests, scripts or examples.
+- *Test-only credentials* are the fixed passwords in `backend/tests/`. They are only ever used against a throw-away in-memory SQLite database. Never use them for a real account.
+- *Browser test accounts* (`e2e/`) get a fresh random password on every run.
+- The development credentials that earlier versions shipped (old default DB password, old admin and demo passwords) have been removed from the source code and are not valid anywhere. Treat any password that has ever been committed as public. If a real secret is ever committed, **rotate it first**; cleaning Git history comes second.
 
 ---
 
@@ -274,7 +282,7 @@ All operations are deterministic, previewed first, and saved as a **new version*
 The commands below are verified. More detail is in [docs/TESTING_AND_RELEASE.md](docs/TESTING_AND_RELEASE.md).
 
 ```powershell
-docker exec dq-backend python -m pytest -q -p no:logging   # backend: 147 tests
+docker exec dq-backend python -m pytest -q -p no:logging   # backend: 164 tests
 cd frontend; npx vitest run; npx tsc -b; npm run build; cd ..  # frontend: 15 tests, types, build
 docker compose config --quiet                                  # dev compose valid (prints nothing)
 docker compose -f docker-compose.prod.yml config --quiet       # prod compose valid
@@ -417,9 +425,9 @@ Defined in `.env` (copy from `.env.example`) and passed to containers by the Com
 |---|---|---|---|---|---|
 | `POSTGRES_USER` / `POSTGRES_DB` | DB user and database name | yes | `dq_user` / `dq_command_center` | low | changing them later needs a DB migration plan |
 | `POSTGRES_PASSWORD` | DB password | yes | `<long random>` | **yes** | must match the password in `DATABASE_URL` |
-| `DATABASE_URL` | async DB URL for the app | yes | `postgresql+asyncpg://USER:PASS@postgres:5432/DB` | **yes** | production refuses the dev default password |
-| `DATABASE_URL_SYNC` | sync DB URL for Alembic | yes | `postgresql://USER:PASS@postgres:5432/DB` | **yes** | |
-| `JWT_SECRET_KEY` | signs login tokens | yes | `<64 random chars>` | **yes** | ≥32 chars in production; changing it logs everyone out |
+| `DATABASE_URL` | async DB URL for the app | yes, **no default** | `postgresql+asyncpg://USER:PASS@postgres:5432/DB` | **yes** | startup fails if missing; production refuses a DB password under 16 characters or one that looks like a dev/example value |
+| `DATABASE_URL_SYNC` | sync DB URL for Alembic | yes, **no default** | `postgresql://USER:PASS@postgres:5432/DB` | **yes** | same rules as `DATABASE_URL` |
+| `JWT_SECRET_KEY` | signs login tokens | yes, **no default** | `<64 random chars>` | **yes** | ≥32 chars and not a placeholder, in every environment; changing it logs everyone out |
 | `SECRET_KEY` | general secret | yes in prod | `<64 random chars>` | **yes** | validated at startup but **not used by the code today** |
 | `JWT_ALGORITHM` | token algorithm | no | `HS256` | no | |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | access token lifetime | no | `15` | no | |
@@ -467,7 +475,7 @@ Settings not in `.env`, defined in `backend/app/config.py`: `UPLOAD_DIR` (`uploa
 1. No HTTPS.
 2. Accounts with publicly known passwords:
    - demo users and earlier QA accounts: `docker exec dq-backend python -m app.tools.prepare_external_testing` (then `--apply`);
-   - the test accounts from browser runs (`qa.*@example.com`, created with passwords not stored in the repo, so the tool doesn't detect them): deactivate them on the Users page.
+   - older browser-test accounts (`qa.*@example.com`) were created with fixed passwords that are no longer in the source. Either deactivate them on the Users page, or pass those passwords to the tool in a file kept **outside** the repository (`--candidates-file`). New browser runs use random passwords.
 3. No SMTP: password resets need an operator.
 
 **Reliability gaps:**

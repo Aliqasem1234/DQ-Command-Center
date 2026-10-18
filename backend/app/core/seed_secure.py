@@ -48,6 +48,11 @@ SYSTEM_PERMISSIONS = [
     {"name": "Edit Profile", "code": "profile:edit", "module": "Profile"},
 ]
 
+# Demo accounts exist only for local development. Their passwords are random
+# (nobody can sign in to them), and login refuses them in production in case a
+# development database is reused there.
+DEMO_EMAILS = frozenset(f"demo{i}@dqcommandcenter.io" for i in (1, 2, 3))
+
 DEMO_DEPARTMENTS = [
     {"name": "Finance", "description": "Financial data management"},
     {"name": "Sales", "description": "Sales and customer data"},

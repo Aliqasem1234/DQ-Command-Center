@@ -415,7 +415,7 @@ Admin:
 
 Test User (create via registration):
   Email: testuser@example.com
-  Password: TestPassword123!
+  Password: [REDACTED-DEV-CREDENTIAL]
 ```
 
 ---

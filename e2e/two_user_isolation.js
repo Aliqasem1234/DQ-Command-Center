@@ -11,7 +11,9 @@ const env = fs.readFileSync(path.join(process.env.REPO || path.resolve(__dirname
 const get = (k) => (env.match(new RegExp(`^${k}=(.*)$`, 'm')) || [])[1]?.trim();
 const ADMIN = [get('INIT_ADMIN_EMAIL'), get('INIT_ADMIN_PASSWORD')];
 const stamp = Date.now();
-const PW = '[REDACTED-DEV-CREDENTIAL]';
+// Fresh random password per run: the script registers its own accounts, so no
+// fixed test password ever has to be stored in the repository.
+const PW = `e2e-${require('crypto').randomBytes(18).toString('base64url')}-Aa1!`;
 const A = { email: `qa.iso.a.${stamp}@example.com`, tag: `AUNIK${stamp}` };
 const B = { email: `qa.iso.b.${stamp}@example.com`, tag: `BUNIK${stamp}` };
 const results = [];

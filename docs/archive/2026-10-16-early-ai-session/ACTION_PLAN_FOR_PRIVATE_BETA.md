@@ -130,7 +130,7 @@ Open http://localhost in your browser
 1. Navigate to Register
 2. Create account with:
    - Email: testuser@example.com
-   - Password: TestPassword123!
+   - Password: [REDACTED-DEV-CREDENTIAL]
    - Name: Test User
 3. Verify you can access:
    - Dashboard ✅
@@ -157,9 +157,9 @@ After all tests pass, record:
 ### STEP 9: Create Test Users
 
 For private beta, pre-create a few test accounts:
-- testuser1@example.com / TestPassword123!
-- testuser2@example.com / TestPassword123!
-- testuser3@example.com / TestPassword123!
+- testuser1@example.com / [REDACTED-DEV-CREDENTIAL]
+- testuser2@example.com / [REDACTED-DEV-CREDENTIAL]
+- testuser3@example.com / [REDACTED-DEV-CREDENTIAL]
 
 ### STEP 10: Prepare Tester List
 

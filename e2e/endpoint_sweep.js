@@ -3,7 +3,9 @@
 // Usage: node endpoint_sweep.js
 const API = 'http://127.0.0.1:8000';
 const stamp = Date.now();
-const PW = '[REDACTED-DEV-CREDENTIAL]';
+// Fresh random password per run: the script registers its own accounts, so no
+// fixed test password ever has to be stored in the repository.
+const PW = `e2e-${require('crypto').randomBytes(18).toString('base64url')}-Aa1!`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function call(method, path, token, body, form) {

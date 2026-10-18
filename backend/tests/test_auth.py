@@ -403,3 +403,29 @@ async def test_health_reports_unhealthy_when_database_is_unreachable(client: Asy
     assert response.status_code == 503
     assert response.json()["status"] == "unhealthy"
     assert response.json()["database"] == "unreachable"
+
+
+@pytest.mark.asyncio
+async def test_demo_accounts_cannot_sign_in_in_production(client: AsyncClient, test_session, monkeypatch):
+    # A development database reused in production must not expose the seeded
+    # demo accounts, whatever their password is.
+    import secrets
+    from datetime import datetime, timezone
+    from app.config import settings
+    from app.models.user import User
+
+    password = secrets.token_urlsafe(16)  # generated per run, never a fixed value
+    now = datetime.now(timezone.utc)
+    test_session.add(User(
+        email="demo1@dqcommandcenter.io", username="demo1", password_hash=hash_password(password),
+        full_name="Demo", is_active=True, is_verified=True, created_at=now, updated_at=now,
+    ))
+    await test_session.flush()
+    body = {"email": "demo1@dqcommandcenter.io", "password": password}
+
+    assert (await client.post("/api/v1/auth/login", json=body)).status_code == 200
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    response = await client.post("/api/v1/auth/login", json=body)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"

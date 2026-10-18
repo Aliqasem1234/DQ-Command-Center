@@ -26,7 +26,11 @@ read `INIT_ADMIN_EMAIL`/`INIT_ADMIN_PASSWORD` from `../.env` (never printed).
 
 **Notes**
 - Every run registers new `qa.*@example.com` test accounts and datasets.
-  Deactivate them (Users page) before inviting external testers.
+  Each run uses a fresh random password that is never stored or printed, so
+  nobody can sign in to those accounts afterwards. They still clutter the
+  database; deactivate them (Users page) before inviting external testers.
+- Never put a fixed password in these scripts: anything committed here is
+  readable by everyone who can read the repository and its history.
 - Login is rate limited (10/minute). Running several suites back to back
   can hit the limit; the scripts wait and retry, or wait a minute between suites.
 - `BASE` defaults to `http://localhost` (nginx).

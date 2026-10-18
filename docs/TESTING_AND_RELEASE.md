@@ -6,7 +6,7 @@ Every command below was run successfully in this repository on 2026-10-18. Run t
 
 | Layer | Where | What it proves |
 |---|---|---|
-| Backend unit + API integration | `backend/tests/` (pytest, 147 tests) | Business logic and HTTP behaviour against an in-memory SQLite database. Doesn't touch your real data |
+| Backend unit + API integration | `backend/tests/` (pytest, 164 tests) | Business logic and HTTP behaviour against an in-memory SQLite database. Doesn't touch your real data |
 | Frontend unit | `frontend/src/**/__tests__` (vitest, 15 tests) | Error messages (Swedish/English), permissions helper, per-user query cache |
 | Type check | `tsc -b` | The TypeScript code is consistent |
 | Production build | `npm run build` | The frontend compiles for production |
@@ -16,7 +16,7 @@ Every command below was run successfully in this repository on 2026-10-18. Run t
 
 | File | Tests | Focus |
 |---|---|---|
-| `test_auth.py` | 20 | registration, login, lockout, reset, sessions, health |
+| `test_auth.py` | 21 | registration, login, lockout, reset, sessions, health; demo accounts refused in production |
 | `test_admin.py` | 22 | users, roles, departments, audit (admin) |
 | `test_rbac.py` | 20 | permissions, escalation guards, ownership, deactivation |
 | `test_product_isolation.py` | 10 | two ordinary users: every surface isolated, sharing |
@@ -25,8 +25,8 @@ Every command below was run successfully in this repository on 2026-10-18. Run t
 | `test_cleaning_engine.py` | 20 | every cleaning operation, known input → output |
 | `test_rule_engine.py` | 17 | every executable rule type |
 | `test_cleaning_and_rules_api.py` | 7 | preview = apply, restore, rule run and score, empty dataset, isolation |
-| `test_config.py` | 13 | production refuses unsafe settings |
-| `test_prepare_external_testing.py` | 3 | known-password account detection |
+| `test_config.py` | 27 | no code defaults for DB/JWT secrets; production refuses unsafe settings; errors never echo secrets |
+| `test_prepare_external_testing.py` | 5 | known-password account detection, extra candidates file, demo e-mails |
 
 ## 2. Commands
 

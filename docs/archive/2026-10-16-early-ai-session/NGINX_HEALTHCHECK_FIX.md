@@ -123,7 +123,7 @@ docker-compose exec nginx wget -q --tries=1 http://127.0.0.1/health -O -
 
 # Test User Registration
 # Create account: testuser@example.com
-# Password: TestPassword123!
+# Password: [REDACTED-DEV-CREDENTIAL]
 # Should: Register successfully, redirect to login or verify screen
 ```
 
