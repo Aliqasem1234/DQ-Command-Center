@@ -12,6 +12,7 @@ Security notes:
 """
 import os
 import uuid
+import zipfile
 from pathlib import Path
 from typing import BinaryIO
 
@@ -19,7 +20,14 @@ from fastapi import UploadFile
 
 from app.config import settings
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+# Legacy .xls is not accepted: reading it needs xlrd (not installed) and
+# cleaned versions are always written in the .xlsx format.
+ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+
+# An .xlsx file is a ZIP archive. A small upload can unpack to gigabytes
+# (a "zip bomb") and exhaust memory while it is parsed, so the total
+# uncompressed size is bounded before anything reads it.
+MAX_XLSX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
 
 
 class UploadValidationError(ValueError):
@@ -92,8 +100,27 @@ async def save_upload(dataset_id: uuid.UUID, file: UploadFile) -> tuple[str, str
         dest_path.unlink(missing_ok=True)
         raise
 
+    if file_format == "xlsx":
+        try:
+            validate_xlsx_archive(dest_path)
+        except UploadValidationError:
+            dest_path.unlink(missing_ok=True)
+            raise
+
     relative_path = str(Path(str(dataset_id)) / stored_name)
     return relative_path, file_format, size
+
+
+def validate_xlsx_archive(path: Path) -> None:
+    """Refuse files that aren't real .xlsx archives, or that would unpack to
+    more than MAX_XLSX_UNCOMPRESSED_BYTES."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            total = sum(info.file_size for info in archive.infolist())
+    except zipfile.BadZipFile:
+        raise UploadValidationError("The file is not a valid .xlsx workbook.")
+    if total > MAX_XLSX_UNCOMPRESSED_BYTES:
+        raise UploadValidationError("The workbook is too large when unpacked. Save it as CSV or split it.")
 
 
 def resolve_path(relative_path: str) -> Path:

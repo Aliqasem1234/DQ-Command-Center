@@ -182,8 +182,11 @@ async def reprofile_version(
         raise HTTPException(status_code=404, detail="Dataset version not found")
     try:
         return await profile_dataset_version(db, version)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Could not profile file: {e}")
+    except Exception:
+        # Internal errors (paths, SQL, library messages) are logged, not
+        # returned to the client.
+        logger.exception("Profiling failed for dataset version %s", version_id)
+        raise HTTPException(status_code=422, detail="Could not profile file.")
 
 
 @router.post("/{dataset_id}/versions/{version_id}/scan", response_model=ScanResultResponse, summary="Run automatic data quality discovery on a version")
@@ -200,8 +203,9 @@ async def scan_version(
         raise HTTPException(status_code=404, detail="Dataset version not found")
     try:
         return await scan_dataset_version(db, version, current_user.id)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Could not scan file: {e}")
+    except Exception:
+        logger.exception("Quality scan failed for dataset version %s", version_id)
+        raise HTTPException(status_code=422, detail="Could not scan file.")
 
 
 @router.post("/{dataset_id}/versions/{version_id}/clean/preview", response_model=CleaningPreviewResponse, summary="Dry-run cleaning operations without saving")

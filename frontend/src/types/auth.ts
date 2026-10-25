@@ -60,3 +60,10 @@ export interface MessageResponse {
   message: string;
   detail?: string | null;
 }
+
+export interface ChangePasswordResponse {
+  message: string;
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+}

@@ -126,7 +126,7 @@ export function DashboardPageModern() {
 
       {error && (
         <div className="alert alert-error mb-6">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <AlertCircle className="w-5 h-5 shrink-0" />
           {error}
         </div>
       )}
@@ -295,7 +295,7 @@ export function DashboardPageModern() {
                     <div key={name}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color.dot}`} />
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${color.dot}`} />
                           {t(`dimensions.${name}`, { defaultValue: name.replace('_', ' ') })}
                         </span>
                         <span className="text-sm font-semibold text-slate-900">

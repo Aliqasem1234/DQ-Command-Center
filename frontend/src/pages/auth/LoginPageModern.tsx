@@ -42,7 +42,7 @@ export function LoginPageModern() {
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <div className="alert alert-error">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 shrink-0" />
             <p className="text-sm font-medium">{error.message}</p>
           </div>
         )}

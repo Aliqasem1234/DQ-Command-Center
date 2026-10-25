@@ -116,7 +116,7 @@ export function UserListPage() {
                   <tr key={user.id}>
                     <td>
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400 flex items-center justify-center text-xs font-bold shrink-0">
                           {user.full_name?.charAt(0).toUpperCase() || '?'}
                         </div>
                         <span className="font-medium text-slate-900">{user.full_name}</span>
@@ -214,7 +214,7 @@ function UserFormModal({
   const [password, setPassword] = useState('');
 
   return (
-    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">
@@ -308,7 +308,7 @@ function RolesModal({
     setSelected((prev) => (prev.includes(name) ? prev.filter((r) => r !== name) : [...prev, name]));
 
   return (
-    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50" role="dialog" aria-modal="true">
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">{t('users.editRoles')}</h2>

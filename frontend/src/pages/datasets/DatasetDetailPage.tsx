@@ -191,7 +191,7 @@ export function DatasetDetailPage() {
             {t('datasets.newVersion')}
             <input
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];

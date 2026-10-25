@@ -135,8 +135,8 @@ export function MainLayout() {
 
   const drawerContent = (
     <div className="flex flex-col h-full">
-      <div className="h-16 flex items-center gap-2.5 px-5 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+      <div className="h-16 flex items-center gap-2.5 px-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center shrink-0 shadow-sm">
           <BrandIcon className="w-4.5 h-4.5 text-white" size={18} />
         </div>
         <div className="min-w-0 leading-tight">
@@ -168,7 +168,7 @@ export function MainLayout() {
                           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-50'
                       }`}
                     >
-                      <IconComponent className="w-[18px] h-[18px] flex-shrink-0" />
+                      <IconComponent className="w-[18px] h-[18px] shrink-0" />
                       <span className="truncate">{t(item.label)}</span>
                     </button>
                   </li>
@@ -223,7 +223,7 @@ export function MainLayout() {
                 aria-expanded={showUserMenu}
                 aria-label={user?.full_name}
               >
-                <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-white dark:ring-slate-900">
+                <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold shrink-0 ring-2 ring-white dark:ring-slate-900">
                   {user?.full_name?.charAt(0).toUpperCase() || 'U'}
                 </div>
                 <div className="hidden sm:block text-left leading-tight">

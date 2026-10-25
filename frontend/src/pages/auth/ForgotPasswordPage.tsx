@@ -27,7 +27,7 @@ export function ForgotPasswordPage() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 card-lg">
-      <h2 className="text-xl font-bold text-slate-900 mb-2">{t('auth.forgotPassword')}</h2>
+      <h2 className="text-xl font-bold text-slate-900">{t('auth.forgotPassword')}</h2>
       <p className="text-sm text-slate-600 mb-6">{t('auth.enterEmailForReset')}</p>
 
       {message && (

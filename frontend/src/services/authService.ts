@@ -7,6 +7,7 @@ import type {
   RefreshTokenResponse,
   ResetPasswordRequest,
   ChangePasswordRequest,
+  ChangePasswordResponse,
   UserResponse,
 } from '../types';
 
@@ -54,8 +55,10 @@ export const authService = {
     return response.data;
   },
 
-  async changePassword(data: ChangePasswordRequest): Promise<MessageResponse> {
-    const response = await api.post<MessageResponse>('/v1/auth/change-password', data);
+  // The backend ends every session on a password change (other devices are
+  // signed out) and returns a fresh token pair for this one.
+  async changePassword(data: ChangePasswordRequest): Promise<ChangePasswordResponse> {
+    const response = await api.post<ChangePasswordResponse>('/v1/auth/change-password', data);
     return response.data;
   },
 

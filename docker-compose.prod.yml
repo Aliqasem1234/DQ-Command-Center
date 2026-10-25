@@ -22,7 +22,7 @@
 #       docker volume create dq-command-center-v2_backend_uploads
 #
 # Secrets come from .env (variable interpolation); nothing secret is stored
-# in this file. See docs/PRODUCTION_READINESS_2026-10-16.md.
+# in this file. See docs/DEPLOYMENT.md (history: docs/history/PRODUCTION_READINESS_2026-10-16.md).
 
 name: dq-command-center-v2
 
@@ -47,6 +47,34 @@ services:
     networks:
       - dq-network
 
+  # One-shot, idempotent: hands the uploads volume to the backend's
+  # unprivileged user (uid/gid 10001, see backend/Dockerfile) and exits.
+  # Volumes created by older versions are owned by root, with a top folder
+  # of mode 555. Only ownership and permission bits change; no file is
+  # moved, rewritten or deleted. Safe to run on every start: on later runs
+  # the folder already belongs to 10001 (mode 750), so root needs
+  # DAC_READ_SEARCH to traverse it and FOWNER to chmod it. It has no network
+  # and exits immediately.
+  uploads-permissions:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: dq-command-center-v2-backend:prod
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 10001:10001 /app/uploads && chmod 750 /app/uploads"]
+    network_mode: none
+    volumes:
+      - backend_uploads:/app/uploads
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_READ_SEARCH
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -57,6 +85,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      uploads-permissions:
+        condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: ${PROD_LOG_LEVEL:-INFO}
@@ -87,6 +117,13 @@ services:
     # No source bind mount and no "ports:" - the API is reached via nginx.
     volumes:
       - backend_uploads:/app/uploads
+    # Container hardening: runs as the image's unprivileged "app" user (uid
+    # 10001), with every Linux capability dropped, and no process may gain
+    # privileges after start.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     # Only nginx (on the private Docker network) talks to the backend, so the
     # proxy headers it sets can be trusted from private ranges.
     command: >
@@ -116,6 +153,8 @@ services:
     image: dq-command-center-v2-web:prod
     container_name: dq-nginx
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       backend:
         condition: service_healthy

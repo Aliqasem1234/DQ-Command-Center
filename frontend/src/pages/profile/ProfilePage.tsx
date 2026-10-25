@@ -139,7 +139,8 @@ export function ChangePasswordCard() {
     }
     setSaving(true);
     try {
-      await authService.changePassword({ current_password: current, new_password: next });
+      const tokens = await authService.changePassword({ current_password: current, new_password: next });
+      useAuthStore.getState().setTokens(tokens.access_token, tokens.refresh_token);
       setMessage(t('auth.passwordChanged'));
       setCurrent('');
       setNext('');

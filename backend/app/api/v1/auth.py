@@ -15,6 +15,7 @@ from app.schemas.auth import (
     VerifyEmailRequest,
     UpdateProfileRequest,
     ChangePasswordRequest,
+    ChangePasswordResponse,
     MessageResponse,
     UserResponse,
 )
@@ -176,8 +177,8 @@ async def verify_email(
 
 @router.post(
     "/auth/change-password",
-    response_model=MessageResponse,
-    summary="Change password for authenticated user",
+    response_model=ChangePasswordResponse,
+    summary="Change password; ends every other session and returns new tokens",
 )
 async def change_password(
     body: ChangePasswordRequest,
@@ -185,10 +186,14 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        await auth_service.change_password(
+        access_token, refresh_token = await auth_service.change_password(
             db, current_user, body.current_password, body.new_password
         )
-        return MessageResponse(message="Password changed successfully")
+        return ChangePasswordResponse(
+            message="Password changed successfully",
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

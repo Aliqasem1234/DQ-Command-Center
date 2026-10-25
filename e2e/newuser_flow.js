@@ -138,6 +138,8 @@ const apiAs = (page, method, p) => page.evaluate(async ([m, url]) => {
   await page.getByRole('button', { name: 'Lägg till' }).click();
   await page.locator('form input').first().fill(`E-post krävs ${stamp}`);
   await page.selectOption('#rule-dataset', { label: `Kunder ${stamp}` });
+  // Executable rules need a column (the form refuses to save without one).
+  await page.fill('#rule-column', 'email');
   await page.locator('form button[type=submit]').click(); await page.waitForTimeout(1200);
   const ruleRow = page.locator('tr', { hasText: `E-post krävs ${stamp}` });
   check('rules: user creates a rule for their dataset; table shows the dataset name', (await ruleRow.count()) === 1 && (await ruleRow.innerText()).includes(`Kunder ${stamp}`));

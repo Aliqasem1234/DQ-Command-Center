@@ -4,6 +4,9 @@ from typing import List
 from urllib.parse import unquote, urlsplit
 
 VALID_ENVIRONMENTS = {"development", "test", "production"}
+# Only HMAC algorithms: the secret is symmetric, and accepting e.g. "none" or
+# an asymmetric algorithm would let tokens be forged.
+ALLOWED_JWT_ALGORITHMS = {"HS256", "HS384", "HS512"}
 
 # Placeholder values that older versions of this project shipped as code
 # defaults or in .env.example. They are refused everywhere for the JWT secret
@@ -74,6 +77,10 @@ class Settings(BaseSettings):
     # server other people can reach.
     DEV_EXPOSE_AUTH_TOKENS: bool = False
 
+    # Log every SQL statement *with its bound parameters* (password hashes,
+    # token hashes, cell values). Opt-in and development only.
+    SQL_ECHO: bool = False
+
     @property
     def expose_auth_tokens(self) -> bool:
         return self.ENVIRONMENT == "development" and self.DEV_EXPOSE_AUTH_TOKENS
@@ -91,6 +98,13 @@ class Settings(BaseSettings):
         v = str(v).strip().lower()
         if v not in VALID_ENVIRONMENTS:
             raise ValueError(f"ENVIRONMENT must be one of {sorted(VALID_ENVIRONMENTS)}, got {v!r}")
+        return v
+
+    @field_validator("JWT_ALGORITHM")
+    @classmethod
+    def _hmac_algorithm_only(cls, v: str) -> str:
+        if v not in ALLOWED_JWT_ALGORITHMS:
+            raise ValueError(f"JWT_ALGORITHM must be one of {sorted(ALLOWED_JWT_ALGORITHMS)}")
         return v
 
     @property

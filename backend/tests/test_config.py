@@ -3,6 +3,8 @@
 Every value below is a test-only placeholder; none is used by any real
 database or deployment.
 """
+import secrets
+
 import pytest
 from pydantic import ValidationError
 
@@ -14,12 +16,16 @@ DEV_REQUIRED = dict(
     JWT_SECRET_KEY="j" * 40,
 )
 
+# Generated per run: hex never contains the dev/example markers production
+# refuses, and no fixed "realistic-looking" password sits in the repository.
+PROD_DB_PASSWORD = secrets.token_hex(16)
+
 SAFE_PRODUCTION = dict(
     DEV_REQUIRED,
     ENVIRONMENT="production",
     SECRET_KEY="s" * 40,
-    DATABASE_URL="postgresql+asyncpg://dq:Q7vR2mXk9LpW4tZs8NbY@postgres:5432/dq",
-    DATABASE_URL_SYNC="postgresql://dq:Q7vR2mXk9LpW4tZs8NbY@postgres:5432/dq",
+    DATABASE_URL=f"postgresql+asyncpg://dq:{PROD_DB_PASSWORD}@postgres:5432/dq",
+    DATABASE_URL_SYNC=f"postgresql://dq:{PROD_DB_PASSWORD}@postgres:5432/dq",
     LOG_LEVEL="INFO",
     CORS_ORIGINS="https://dq.example.org",
     DEV_EXPOSE_AUTH_TOKENS=False,

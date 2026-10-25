@@ -114,7 +114,7 @@ export function DatasetsListPage() {
                     <p className="text-sm text-slate-500 truncate">{ds.description || t('datasets.noDescription')}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4 sm:gap-6 text-sm text-slate-500 flex-shrink-0 pl-[52px] sm:pl-0">
+                <div className="flex items-center gap-4 sm:gap-6 text-sm text-slate-500 shrink-0 pl-[52px] sm:pl-0">
                   <span className="whitespace-nowrap text-xs text-slate-400 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-0.5">
                     {ds.domain_id ? (domainById.get(ds.domain_id) ?? t('datasets.domain')) : t('datasets.noDomainOption')}
                   </span>
@@ -170,7 +170,7 @@ function UploadModal({
   const isCreatingDomain = domainId === NEW_DOMAIN_SENTINEL;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">{t('datasets.uploadDataset')}</h2>
@@ -224,7 +224,7 @@ function UploadModal({
               <label className="block text-sm font-medium text-slate-700 mb-1">{t('datasets.file')}</label>
               <input
                 type="file"
-                accept=".csv,.xlsx,.xls"
+                accept=".csv,.xlsx"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 className="input-base"
                 required

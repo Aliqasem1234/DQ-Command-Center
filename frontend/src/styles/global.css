@@ -1,0 +1,65 @@
+/* Global variables and element styles. Unlayered and imported last, as in
+ * the v3 stylesheet where they followed the utilities. */
+/* Root variables */
+:root {
+  --color-primary: #0284c7;
+  --color-primary-light: #0ea5e9;
+  --color-primary-dark: #0369a1;
+  --color-success: #16a34a;
+  --color-warning: #ea580c;
+  --color-error: #dc2626;
+  --color-info: #0284c7;
+}
+
+/* Dark mode */
+.dark {
+  color-scheme: dark;
+}
+
+/* Base styling. Font stack is an explicit, high-quality system stack
+ * (not "Inter" - the CSP intentionally has no font-src beyond 'self'/data:,
+ * so a webfont was never actually loading; this renders crisp and native
+ * on every platform with zero extra network requests). The page canvas
+ * sits one step off pure white/black so cards read as a distinct, slightly
+ * elevated surface rather than blending into the background. */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+.dark body {
+  @apply bg-slate-950 text-slate-50;
+}
+
+/* Thin, theme-aware scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.slate.300') transparent;
+}
+
+.dark * {
+  scrollbar-color: theme('colors.slate.700') transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full border-2 border-solid border-transparent bg-clip-padding;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-slate-700;
+}
+
+@media print {
+  .no-print {
+    display: none;
+  }
+}

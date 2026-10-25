@@ -4,8 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from uuid import UUID
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import jwt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,22 +16,28 @@ from app.models.token import RefreshToken
 from app.models.user import User
 from app.models.role import UserRole, Role, RolePermission
 
-pwd_context = CryptContext(
-    schemes=["argon2"],
-    deprecated="auto",
-    argon2__time_cost=3,
-    argon2__memory_cost=65536,
-    argon2__parallelism=4,
-    argon2__hash_len=32,
+# Argon2id via argon2-cffi. Same parameters and the same "$argon2id$..."
+# encoding the project used through passlib (unmaintained, and relying on
+# the "crypt" module that Python 3.13 removed), so every existing hash keeps
+# verifying (test_security_hardening.py checks a passlib-made hash).
+_password_hasher = PasswordHasher(
+    time_cost=3,
+    memory_cost=65536,
+    parallelism=4,
+    hash_len=32,
+    salt_len=16,
 )
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _password_hasher.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return _password_hasher.verify(hashed_password, plain_password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
 
 
 def create_access_token(user_id: UUID) -> str:
@@ -58,9 +65,16 @@ def create_refresh_token(user_id: UUID, token_id: UUID) -> str:
 
 def decode_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-        return payload
-    except JWTError:
+        # The algorithm is pinned (never taken from the token header) and the
+        # claims every token we issue carries are required, so a token
+        # without an expiry is rejected rather than treated as non-expiring.
+        return jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"require": ["exp", "iat", "sub", "type"]},
+        )
+    except jwt.PyJWTError:
         return None
 
 

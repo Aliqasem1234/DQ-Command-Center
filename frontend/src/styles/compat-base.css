@@ -1,0 +1,26 @@
+/* Preflight defaults Tailwind v4 changed; keeps the v3 behaviour this design
+ * was built on. Imported into the base layer, so everything else wins. */
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+  border-color: #e5e7eb; /* v3 default: gray-200 */
+}
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af; /* v3 default: gray-400 */
+}
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+/* v4's preflight makes the file picker button transparent. */
+::file-selector-button {
+  margin-inline-end: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.125rem;
+  background-color: #475569; /* slate-600 */
+  color: #f8fafc; /* slate-50 */
+  cursor: pointer;
+}

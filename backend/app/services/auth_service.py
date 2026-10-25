@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 from uuid import UUID
 
 import secrets
+from functools import lru_cache
 from sqlalchemy import select, func, delete, inspect, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,6 +34,13 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_ROLE_NAME = "User"
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    # Verified against when an e-mail is unknown, so a failed login costs the
+    # same Argon2 work whether or not the account exists (no timing oracle).
+    return hash_password(secrets.token_urlsafe(32))
 
 
 def normalize_email(email: str) -> str:
@@ -155,15 +163,13 @@ async def login_user(
     user = result.scalar_one_or_none()
 
     if user is None:
+        verify_password(password, _dummy_password_hash())
         raise ValueError("Invalid email or password")
 
     # Development demo accounts must never be usable in production, even if a
     # development database is reused. Same message as an unknown account.
     if settings.ENVIRONMENT == "production" and email in DEMO_EMAILS:
         raise ValueError("Invalid email or password")
-
-    if not user.is_active:
-        raise ValueError("Account is deactivated")
 
     if user.is_locked:
         raise ValueError("Account is locked. Try again later.")
@@ -185,6 +191,11 @@ async def login_user(
         await db.flush()
         await db.commit()
         raise ValueError("Invalid email or password")
+
+    # Only someone who knows the password learns that the account is
+    # deactivated; anyone else gets the generic message above.
+    if not user.is_active:
+        raise ValueError("Account is deactivated")
 
     # Successful login
     user.failed_login_attempts = 0
@@ -341,15 +352,27 @@ async def change_password(
     user: User,
     current_password: str,
     new_password: str,
-) -> bool:
+) -> Tuple[str, str]:
+    """Change the password, end every existing session and return a fresh
+    (access, refresh) token pair for the caller's own session.
+
+    Without revoking, anyone holding an old refresh token (another device,
+    or an attacker the user is trying to lock out) stayed signed in for up
+    to REFRESH_TOKEN_EXPIRE_DAYS."""
     if not verify_password(current_password, user.password_hash):
         raise ValueError("Current password is incorrect")
 
     user.password_hash = hash_password(new_password)
-
+    user.updated_at = datetime.now(timezone.utc)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.is_revoked == False)  # noqa: E712
+        .values(is_revoked=True)
+    )
+    access_token, refresh_token, _ = await create_tokens(db, user)
     await db.flush()
     await db.commit()
-    return True
+    return access_token, refresh_token
 
 
 def get_permission_codes(user: User) -> list[str]:

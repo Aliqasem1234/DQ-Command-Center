@@ -4,6 +4,8 @@ import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
@@ -128,6 +130,15 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "database": database,
     }
     return JSONResponse(status_code=200 if database == "ok" else 503, content=body)
+
+
+# Validation errors keep FastAPI's shape (loc, msg, type, ctx), which the
+# frontend maps to readable messages, but never echo the submitted value: a
+# too-short password would otherwise come back in the response body.
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = [{k: v for k, v in err.items() if k not in ("input", "url")} for err in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 # Global exception handler

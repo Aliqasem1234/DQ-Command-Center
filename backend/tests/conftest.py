@@ -1,3 +1,14 @@
+import os
+import secrets
+
+# The app has no code defaults for these (startup must fail without them).
+# Tests never touch a real database or real tokens, so outside Docker they
+# get throw-away, test-only values here; inside the dev container the real
+# environment wins (setdefault). Nothing below ever connects to this URL.
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test-only:test-only@localhost:5432/test-only")
+os.environ.setdefault("DATABASE_URL_SYNC", "postgresql://test-only:test-only@localhost:5432/test-only")
+os.environ.setdefault("JWT_SECRET_KEY", secrets.token_hex(32))
+
 import pytest
 import pytest_asyncio
 import asyncio
