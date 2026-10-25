@@ -137,12 +137,12 @@ trend data. The frontend dashboard currently calls the second one. Worth
 consolidating into one dashboard service if you're adding more widgets.
 
 **The frontend's production Docker stage was never wired up.**
-`frontend/Dockerfile`'s `production` stage (`vite build` + serve via its
-own nginx) referenced a `frontend/nginx.conf` that didn't exist -
-`docker build --target production` failed outright. Fixed in this pass
-(added the missing config), but the top-level `nginx` service still always
-proxies to the Vite dev server (`frontend:5173`), never to this stage - see
-PRODUCTION_DEPLOYMENT.md for what's still needed to actually route to it.
+The development stack (`docker-compose.yml`) proxies nginx to the Vite dev
+server (`frontend:5173`). The production-like stack
+(`docker-compose.prod.yml`) builds the frontend into static files and
+serves them from nginx (`nginx/Dockerfile.prod`, `nginx/nginx.prod.conf`).
+It publishes only nginx on `127.0.0.1` and doesn't publish the database or
+API ports. `frontend/Dockerfile` only builds the development image.
 
 **In-memory rate limiting.** `slowapi`'s default backend keeps counters in
 process memory - they reset on every container restart/redeploy and aren't

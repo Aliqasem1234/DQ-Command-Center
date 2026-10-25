@@ -15,7 +15,7 @@ How far each feature really goes, judged from the code and from tests that were 
 |---|---|---|
 | Registration, login, logout, session refresh | A | `tests/test_auth.py`; browser flows |
 | Account lockout (5 failed logins, 15 min) | A | browser lockout test |
-| Password change (Settings → Säkerhet) | B | API tested; the UI was verified before the page moved |
+| Password change (Settings → Säkerhet) | B | API tested (ends every other session, keeps this one); UI not re-run in a browser after the 2026-10-25 change |
 | Password reset by e-mail | C | Works with an operator-issued token; **no SMTP configured**, so users can't receive the e-mail |
 | E-mail verification | C | Token flow exists; not enforced, and not deliverable without SMTP |
 | Upload CSV/Excel → dataset + automatic profiling | A | `test_product_isolation.py`; browser |
@@ -57,17 +57,17 @@ How far each feature really goes, judged from the code and from tests that were 
 |---|---|---|
 | Per-user data isolation (backend) | A | `test_product_isolation.py`, `test_rbac.py`; 55-endpoint sweep; two-user browser test |
 | Per-identity frontend cache | A | `IdentityScopedQueryProvider.test.tsx` (mutation-checked) |
-| Background scheduler | D | `app/tasks/scheduler.py` is an empty wrapper, never started; scheduled scans are out of scope (`ARCHITECTURE.md`) |
+| Background scheduler | D | Not implemented; the unused scheduler stub and `apscheduler` were removed. Scheduled scans are out of scope (`ARCHITECTURE.md`) |
 | Report export (PDF/Excel) | D | Only file downloads of dataset versions exist |
 | Data lineage | D | Table exists (`data_lineage`), no API or UI |
 | Quality targets / rule effectiveness | C | Tables exist and are read by unused endpoints; nothing populates them |
 | Development stack (Vite) | A | `docker-compose.yml` |
 | Production-like stack (built frontend, no DB/API ports) | A | `docker-compose.prod.yml` |
 | HTTPS / TLS | D | Required before anyone else connects |
-| Lint (ESLint) | D | `npm run lint` exists but ESLint isn't installed |
+| Lint (ESLint) | D | Not configured (the dead `npm run lint` script was removed) |
 
-## Known unused files (kept on purpose)
+## Removed as unused (2026-10-25)
 
-- `nginx/Dockerfile`, and the `production` stage and `nginx.conf` in `frontend/`: neither Compose file uses them. The production stack uses `nginx/Dockerfile.prod`. Kept because deleting them isn't needed to fix anything, and someone may build them manually.
-- `backend/app/tasks/scheduler.py` and the `apscheduler` dependency: unused, see above.
-- `rebuild-docker.ps1`: a convenience script with a hard-coded path. It's harmless (it never uses `-v`), but `PROJECT_OWNER_GUIDE.md` documents the recommended commands.
+- `nginx/Dockerfile`, `frontend/nginx.conf` and the `build`/`production` stages of `frontend/Dockerfile`: no Compose file used them. The production stack is built by `nginx/Dockerfile.prod`.
+- `backend/app/tasks/scheduler.py` and the `apscheduler` dependency: never started.
+- `RUN_TESTS_ON_WINDOWS.ps1` (described an old setup): replaced by `scripts/run-checks.ps1`. `rebuild-docker.ps1` became `scripts/rebuild-dev.ps1`.

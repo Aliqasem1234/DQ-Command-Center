@@ -6,13 +6,21 @@ What the application actually guarantees today, how each control is implemented,
 
 ## 1. Authentication (verified)
 
-- **Passwords** are hashed with **Argon2id** (`app/core/security.py`: time cost 3, 64 MiB memory, parallelism 4) and never stored or logged in plain text. Minimum length 8, maximum 128.
-- **Login** returns a short-lived **access token** (JWT, HS256, 15 minutes by default) and a **refresh token** (JWT, 7 days).
+- **Passwords** are hashed with **Argon2id** via `argon2-cffi` (`app/core/security.py`: time cost 3, 64 MiB memory, parallelism 4) and never stored or logged in plain text. Minimum length 8, maximum 128.
+- **Login** returns a short-lived **access token** (JWT, 15 minutes by default) and a **refresh token** (JWT, 7 days).
+  - Tokens are signed and verified with **PyJWT**, using HMAC only (`JWT_ALGORITHM` must be HS256/384/512; anything else is refused at startup).
+  - The algorithm is pinned on decode, and `exp`, `iat`, `sub` and `type` are required, so unsigned, expired, foreign-key or expiry-less tokens are rejected (`test_security_hardening.py`).
   - Refresh tokens are stored hashed in `refresh_tokens` and rotated on every use.
   - Logout revokes the refresh token.
-- **Errors don't reveal accounts:** wrong password and unknown e-mail give the same message (`test_login_nonexistent_and_wrong_password_are_indistinguishable`). E-mails are compared case-insensitively.
+- **Errors don't reveal accounts:**
+  - Wrong password and unknown e-mail give the same message (`test_login_nonexistent_and_wrong_password_are_indistinguishable`).
+  - An unknown e-mail still runs one Argon2 verification, so response time doesn't reveal which addresses are registered.
+  - "Account is deactivated" is only shown to someone who entered the correct password.
+  - E-mails are compared case-insensitively.
+  - Remaining, accepted: registration answers "Email already registered", and a locked account says so. Both are rate-limited.
 - **Lockout:** 5 failed logins lock the account for 15 minutes (`LOCKOUT_THRESHOLD`, `LOCKOUT_DURATION_MINUTES`).
 - **Deactivation ends access immediately.** Existing tokens stop working and refresh is refused (`test_deactivated_user_loses_existing_sessions_immediately`).
+- **Password change ends every other session.** All refresh tokens are revoked, and the response carries a fresh token pair for the current session (`test_password_change_ends_other_sessions_and_keeps_this_one`).
 - **Password reset:**
   - All existing sessions end (`test_password_reset_ends_existing_sessions`).
   - The reset token is single-use, expires after 1 hour, and is **never returned in the API response** unless the local-only flag `DEV_EXPOSE_AUTH_TOKENS=true` is set in development. Production refuses to start with it on.
@@ -51,6 +59,8 @@ In **every** environment, `DATABASE_URL`, `DATABASE_URL_SYNC` and `JWT_SECRET_KE
 
 Configuration errors never echo the submitted values (`hide_input_in_errors`), so a failed start can't leak a secret into the logs.
 
+The tests need no real secrets: `tests/conftest.py` sets throw-away, test-only values when the variables are missing. The application itself never falls back to a default.
+
 When `ENVIRONMENT=production`, startup also **refuses** any of these:
 - default or short (<32 character) `SECRET_KEY`;
 - a database password under 16 characters, or one containing a development/example marker (`dev`, `pass`, `change`, `example`, `secret`, `test`, `demo`);
@@ -86,6 +96,8 @@ Production also:
 - **Uploaded files** are stored on the `backend_uploads` Docker volume under one folder per dataset. Only the owner (and anyone it's explicitly shared with) can download them.
 - **Deleting a dataset** removes its database rows (cascade) and its files.
 - **Logs and records never contain:** passwords, tokens, or (for cleaning operations and rule results) cell values. The audit log stores operation types and counts. Rule results store row numbers, not values.
+  - SQL statement logging (which would include bound parameters such as password hashes) is **off** unless `SQL_ECHO=true` is set in development.
+  - Unexpected processing errors are logged on the server; the client gets a generic message without paths or library details.
   - Quality-issue descriptions from automatic scans include up to 5 example values. These are visible only to people who can access the dataset.
 - **Database dumps** contain password hashes and user data. `backups/` and `*.dump` are git-ignored; store dumps outside OneDrive or other shared folders if possible.
 
@@ -101,6 +113,12 @@ Production also:
 | Low | An access token stays valid ≤15 min after a password *reset* (refresh is revoked at once) | accepted |
 | Low | Aggregate metrics are per user; administrators see everything (super admin global access) | by design |
 | Low | No malware scanning of uploaded files (they're parsed as CSV/Excel only, never executed) | open |
+| Medium | The repository is **public**, and GitHub still serves commits from before the history rewrite by their old hashes. They contain old development credentials, none of which is valid anywhere | open: ask GitHub Support to purge cached/unreferenced commits |
+| ~~Medium~~ | Backend container ran as root | **fixed 2026-10-25**: unprivileged user `app` (uid 10001), all capabilities dropped; the uploads volume is migrated by the one-shot `uploads-permissions` service (§11) |
+| ~~Medium~~ | Frontend dev tooling (Vite 6, Vitest 2, esbuild, Tailwind 3) had known advisories | **fixed 2026-10-25**: Vite 8, Vitest 5, Tailwind 4, jsdom 30; `npm audit`: 0 vulnerabilities |
+| ~~Medium~~ | `.xlsx` decompression bombs could exhaust memory; `.xls` was accepted but could never be read | **fixed 2026-10-25**: an `.xlsx` must be a real workbook that unpacks to at most 500 MB; `.xls` is refused (`test_security_hardening.py`) |
+| ~~Low~~ | `passlib` unmaintained; `pytest` 8 local `/tmp` advisory | **fixed 2026-10-25**: `argon2-cffi` directly; pytest 9.1 |
+| Low | Commit metadata shows the author's personal e-mail address | owner decision (GitHub no-reply address for future commits) |
 
 ## 9. Before anyone else connects
 
@@ -110,7 +128,44 @@ Production also:
 4. Remove `INIT_ADMIN_PASSWORD` from `.env` once the admin exists, and rotate any secret that has been shared.
 5. Configure SMTP, or accept operator-issued password resets.
 
-## 10. Test credentials vs production secrets
+## 10. Dependencies
+
+Checked with `pip-audit` (the full backend container environment) and `npm audit`, on 2026-10-25.
+
+**Backend.** One remaining finding:
+- FastAPI 0.142 with Starlette 1.7, which fixes 7 Starlette advisories (multipart DoS, Range-header DoS, Host-header URL injection, and others).
+- python-multipart 0.0.32 and python-dotenv 1.2.4.
+- `python-jose` (unmaintained, with unfixed advisories) was replaced by PyJWT 2.15.
+- The unused `apscheduler` was removed.
+- `passlib` (unmaintained, and broken on Python 3.13) was replaced by `argon2-cffi` directly: same Argon2id parameters and format, and existing hashes verify (`test_existing_passlib_hashes_still_verify`).
+- pytest 9.1, pytest-asyncio 1.4 and pytest-cov 7.1.
+- **Result:** `pip-audit` on the container environment: **no known vulnerabilities**.
+
+**Frontend.** `npm audit` reports **0 vulnerabilities**:
+- Vite 8, Vitest 5, `@vitejs/plugin-react` 6, Tailwind CSS 4 (via `@tailwindcss/vite`; PostCSS and autoprefixer are no longer needed), jsdom 30, `i18next-http-backend` 4, axios 1.20.
+- The Tailwind 4 stylesheet reproduces the v3 cascade (see `frontend/src/index.css`). Screenshots of 18 views were compared pixel by pixel before and after, and the dark-theme audit (32 views) passes.
+
+**Base images:** `python:3.12-slim`, `node:22-alpine` (Node 20 is end-of-life), `nginx:1.28-alpine` (stable), `postgres:16-alpine`.
+
+Re-run before every release:
+
+```powershell
+docker exec dq-backend pip freeze > freeze.txt; pip-audit -r freeze.txt --no-deps --disable-pip
+cd frontend; npm audit
+```
+
+## 11. Container hardening
+
+- Only nginx publishes a port in the production-like stack (`127.0.0.1` by default). PostgreSQL and the API are not published.
+- The backend runs as the unprivileged user **`app` (uid/gid 10001)**, with **all Linux capabilities dropped** and `no-new-privileges`, in both stacks. Its only writable path is the uploads volume.
+- The one-shot `uploads-permissions` service runs before the backend on every start.
+  - It hands the uploads volume to uid 10001; nothing is moved, rewritten or deleted.
+  - It has no network and only `CHOWN`, `FOWNER` and `DAC_READ_SEARCH`.
+  - It was verified on the existing volume: all 65 files were byte-identical (SHA-256) afterwards.
+- nginx runs with `no-new-privileges`.
+- Secrets are required (`${VAR:?}`); the backend refuses unsafe values at startup (§4).
+
+## 12. Test credentials vs production secrets
 
 | Kind | Where it lives | Rule |
 |---|---|---|

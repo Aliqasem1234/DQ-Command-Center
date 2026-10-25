@@ -1,12 +1,12 @@
 # Testing and Release
 
-Every command below was run successfully in this repository on 2026-10-18. Run them from the project root in PowerShell or Git Bash, with the development stack up (`docker compose up -d`).
+Every command below was run successfully in this repository on 2026-10-25. Run them from the project root in PowerShell or Git Bash, with the development stack up (`docker compose up -d`).
 
 ## 1. Test layers
 
 | Layer | Where | What it proves |
 |---|---|---|
-| Backend unit + API integration | `backend/tests/` (pytest, 164 tests) | Business logic and HTTP behaviour against an in-memory SQLite database. Doesn't touch your real data |
+| Backend unit + API integration | `backend/tests/` (pytest, 178 tests) | Business logic and HTTP behaviour against an in-memory SQLite database. Doesn't touch your real data |
 | Frontend unit | `frontend/src/**/__tests__` (vitest, 15 tests) | Error messages (Swedish/English), permissions helper, per-user query cache |
 | Type check | `tsc -b` | The TypeScript code is consistent |
 | Production build | `npm run build` | The frontend compiles for production |
@@ -27,6 +27,7 @@ Every command below was run successfully in this repository on 2026-10-18. Run t
 | `test_cleaning_and_rules_api.py` | 7 | preview = apply, restore, rule run and score, empty dataset, isolation |
 | `test_config.py` | 27 | no code defaults for DB/JWT secrets; production refuses unsafe settings; errors never echo secrets |
 | `test_prepare_external_testing.py` | 5 | known-password account detection, extra candidates file, demo e-mails |
+| `test_security_hardening.py` | 14 | password change ends sessions, login enumeration guards, JWT claims and algorithms, no internal details in errors, validation errors don't echo input, `.xlsx` validation and zip-bomb guard, `.xls` refused, old passlib hashes still verify |
 
 ## 2. Commands
 
@@ -57,9 +58,19 @@ npm run sweep
 cd ..
 ```
 
-`-p no:logging` hides the very verbose SQL debug log that development mode prints. It doesn't affect the results.
+`-p no:logging` hides verbose library debug logging. It doesn't affect the results.
+
+The tests need no `.env` and no real secrets: `tests/conftest.py` sets throw-away, test-only values when the variables are missing, so `cd backend; python -m pytest` also works outside Docker.
 
 Don't use `docker compose config` without `--quiet` when sharing output: it prints the resolved database URL, **including its password**.
+
+### All automated checks at once
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-checks.ps1
+```
+
+It runs the backend tests (inside the dev container), both Compose validations, the frontend type check, the unit tests and the production build, and reports which ones failed.
 
 ## 3. Reading failures
 
@@ -95,10 +106,25 @@ Run before every release, or before sharing the app with anyone.
 6. Check the logs for errors: `docker compose -f docker-compose.prod.yml logs --tail 200 backend`.
 7. Commit (and only then push). Switch back to development with `docker compose -f docker-compose.prod.yml down; docker compose up -d`.
 
-## 6. What isn't tested automatically
+## 6. Manual browser checklist
+
+Open http://localhost with DevTools (Console and Network). "Pass" means no red console errors and no unexpected 4xx/5xx requests.
+
+1. **Login** with the admin account ([ADMIN_SETUP.md](ADMIN_SETUP.md)). You land on `/dashboard`.
+2. **Dashboard** shows real numbers, or an explicit empty state for a new user.
+3. **Every sidebar page** shows data or an explicit empty state, never a blank page.
+4. **Datasets:** upload a CSV, scan it, open Rensa, preview a cleaning step, apply it, then restore the original version and download it.
+5. **Administration** (admin only): add, edit and delete a department, then check that the System log lists all three actions by name.
+6. **RBAC:** register an ordinary user. Administration pages are hidden, and their API routes answer 403.
+7. **Isolation:** the ordinary user sees none of the admin's datasets, rules or domains.
+8. **Password change** (Settings → Säkerhet): you stay signed in, and another browser signed in to the same account is signed out at its next request.
+9. **Language:** switch Svenska and English; no raw `namespace.key` strings.
+10. **Logout** returns to `/login`; `/dashboard` then redirects to `/login`.
+
+## 7. What isn't tested automatically
 
 - Real e-mail delivery (no SMTP configured).
 - HTTPS deployment.
 - Load and performance with large files (the upload limit is 50 MB).
 - English-language UI in the browser (the keys exist, and Swedish is browser-tested).
-- ESLint (not installed; `npm run lint` won't work).
+- Linting: no linter is configured (ESLint was never installed; the dead `lint` script was removed).

@@ -1,62 +1,70 @@
 # DQ Command Center
 
-An enterprise Data Quality & Data Governance platform: manage data domains,
-datasets, and fields; define and run data quality rules across the six
-standard DQ dimensions (accuracy, completeness, consistency, validity,
-uniqueness, timeliness); track quality results and health scores; assign
-ownership/stewardship and governance policies; and audit every change.
+A Data Quality and Data Governance platform, built as a portfolio project. Every registered user works on **their own data**; platform administration is separate.
 
-Upload a real CSV or Excel file to create a dataset: it is profiled
-automatically (real per-column statistics), scanned for quality issues on
-request, and scored. Deterministic cleaning operations are previewed
-(row by row, with a before/after quality score) before they are saved, and
-every cleaning run creates a new version - earlier versions can be
-downloaded or restored. Executable quality rules (required, unique, e-mail,
-numeric range, allowed values, date range) run on every scan or on demand.
-Every registered user works only on their own data; administration is
-separate.
+- **Upload** a CSV or Excel (`.xlsx`) file to create a dataset. It is profiled automatically (real per-column statistics), scanned for quality issues and scored.
+- **Clean** with deterministic operations (trim, normalise dates, convert types, standardise categories, remove duplicates, handle missing values). Each run is previewed row by row, with the quality score before and after, and saving creates a new version. Earlier versions can be downloaded or restored.
+- **Check** with executable quality rules (required, unique, e-mail, numeric range, allowed values, date range). They run on every scan or on demand.
+- **Govern** with domains, sharing by exact e-mail, policies and a personal activity log. Administrators manage users, roles, departments and the system log.
 
-**Start here:** [PROJECT_OWNER_GUIDE.md](PROJECT_OWNER_GUIDE.md) explains the
-whole project - architecture, database, security, operation, backups and
-troubleshooting.
-
-## Stack
-
-- **Backend**: FastAPI (async), SQLAlchemy 2.0, PostgreSQL, Alembic migrations
-- **Frontend**: React 19 + TypeScript, Vite, Tailwind CSS, TanStack Query, Zustand
-- **Auth**: JWT access/refresh tokens, Argon2 password hashing, RBAC (roles → permissions)
-- **i18n**: English and Swedish
-- **Infra**: Docker Compose (Postgres, backend, frontend, nginx)
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the data model and service layout,
-[SECURITY.md](SECURITY.md) for the security posture, and the guides below to
-run it.
-
-## Getting started
-
-| Doc | Purpose |
-|---|---|
-| [PROJECT_OWNER_GUIDE.md](PROJECT_OWNER_GUIDE.md) | **Owner guide**: everything needed to understand, run and maintain the project |
-| [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) | What is implemented and how thoroughly it is verified |
-| [docs/DATA_CLEANING_GUIDE.md](docs/DATA_CLEANING_GUIDE.md) | Every cleaning operation and quality rule |
-| [docs/SECURITY_AND_PRIVACY.md](docs/SECURITY_AND_PRIVACY.md) | Verified security controls and remaining risks |
-| [docs/TESTING_AND_RELEASE.md](docs/TESTING_AND_RELEASE.md) | Test suites, browser tests, release checklist |
-| [QUICKSTART.md](QUICKSTART.md) | Get the full stack running locally in a few minutes |
-| [ADMIN_SETUP_GUIDE.md](ADMIN_SETUP_GUIDE.md) | How the first administrator account is created (no hardcoded credentials) |
-| [TESTING_GUIDE.md](TESTING_GUIDE.md) | Backend/frontend test suites, the Windows Docker test script, manual QA checklist |
-| [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) | What changes for a real deployment |
-| [SECURITY.md](SECURITY.md) | Auth, RBAC, rate limiting, headers, and known gaps |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Data hierarchy, service structure, known architectural debt |
+No AI is used for cleaning or scoring: the same input always gives the same output.
 
 ## Status
 
-Verified on 2026-10-18 against a running Docker stack: 164 backend tests,
-15 frontend tests, type check and production build pass, and real-browser
-suites (two-user isolation, cleaning/versioning/rules, dark-theme audit)
-pass. See [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) for the
-honest feature-by-feature status and the owner guide's "Current risks"
-section before treating this as production-ready (notably: no HTTPS or
-SMTP yet).
+**Not production-ready:** there is no HTTPS and no e-mail delivery (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). It runs locally, bound to `127.0.0.1`.
 
-Older reports from an early AI-assisted session were moved to
-`docs/archive/` because several of their claims proved inaccurate.
+Verified on 2026-10-25 against a running Docker stack:
+- 178 backend tests;
+- 15 frontend tests, type check and production build;
+- real-browser suites: two-user isolation, cleaning/versioning/rules, a 55-endpoint isolation sweep, and a dark-theme contrast audit of 32 views.
+
+See [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) for the honest feature-by-feature status.
+
+## Stack
+
+- **Backend:** FastAPI (async), SQLAlchemy 2, PostgreSQL 16, Alembic, pandas
+- **Frontend:** React 19, TypeScript, Vite 8, Tailwind CSS 4, TanStack Query, Zustand, i18next (Swedish and English)
+- **Security:**
+  - Argon2id password hashing;
+  - JWT (PyJWT, HMAC) access tokens, and refresh tokens that are hashed, rotated and revoked;
+  - RBAC, with per-user data isolation in the database queries;
+  - an unprivileged backend container.
+- **Infra:** Docker Compose (PostgreSQL, backend, frontend/nginx)
+
+## Quick start (Windows, macOS or Linux with Docker)
+
+1. **Configure.** Copy the template and fill in your own values:
+   ```bash
+   cp .env.example .env
+   ```
+   - Required: `POSTGRES_PASSWORD`, the same password inside `DATABASE_URL` and `DATABASE_URL_SYNC`, and `JWT_SECRET_KEY`.
+   - Optional: `INIT_ADMIN_*` to create the first administrator ([docs/ADMIN_SETUP.md](docs/ADMIN_SETUP.md)).
+   - There are no code defaults: the backend refuses to start with missing or placeholder secrets.
+   - Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. **Start** the development stack:
+   ```bash
+   docker compose up -d --build
+   docker compose ps        # postgres, backend, nginx healthy; uploads-permissions "exited (0)"
+   ```
+   Migrations run automatically.
+3. **Open** http://localhost (or the Vite dev server on http://localhost:5173). API docs are at http://localhost:8000/docs, in development only.
+4. **Stop** with `docker compose down`.
+
+   > **Never run `docker compose down -v`.** `-v` deletes the database and every uploaded file. Take a backup first (owner guide → Backup and recovery).
+
+`scripts/run-checks.ps1` runs every automated check (tests, type check, build, Compose validation). `scripts/rebuild-dev.ps1` rebuilds and restarts the development stack.
+
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| [PROJECT_OWNER_GUIDE.md](PROJECT_OWNER_GUIDE.md) | **Start here:** architecture, database, security, operation, backups, troubleshooting |
+| [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) | What is implemented and how thoroughly it is verified |
+| [docs/DATA_CLEANING_GUIDE.md](docs/DATA_CLEANING_GUIDE.md) | Every cleaning operation and quality rule |
+| [docs/SECURITY_AND_PRIVACY.md](docs/SECURITY_AND_PRIVACY.md) | Verified security controls, dependencies and remaining risks |
+| [docs/TESTING_AND_RELEASE.md](docs/TESTING_AND_RELEASE.md) | Test suites, browser tests, manual checklist, release checklist |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Development vs production-like stack, required secrets, containers, go-live requirements |
+| [docs/ADMIN_SETUP.md](docs/ADMIN_SETUP.md) | How the first administrator is created (no hardcoded credentials) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Data model, service layout, architectural debt |
+| [docs/history/](docs/history/) | Dated reports: incidents and design decisions |
+| [SECURITY.md](SECURITY.md) | Security policy and how to report a vulnerability |

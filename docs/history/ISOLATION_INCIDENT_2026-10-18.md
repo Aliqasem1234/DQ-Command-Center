@@ -14,7 +14,7 @@ A regular user on `http://localhost:5173` saw other people's data in four places
 
 - **The cache was shared across accounts.** Query keys such as `['all-datasets']`, `['data-quality-rules']`, `['data-quality-metrics']` and `['governance-assignments']` are not user-specific. Logging out never cleared the cache, and `staleTime` is 5 minutes. So after one account signed out and another signed in on the same tab, every page was served from the previous account's cache, **without a single API request**.
 - **Reproduced in Chrome:** the super admin browsed the four pages, logged out via the menu, and a freshly registered user logged in. That user saw the admin's 10 datasets, 192 rules and the admin's assignments, and the network log showed zero API calls after the switch.
-- **The backend was correct.** The listing services, evaluated for the affected accounts (`qasem40@…`, `aliqassem404040@…`), returned 0 datasets, rules, assignments, policies and domains.
+- **The backend was correct.** The listing services, evaluated for the affected accounts (two of the owner's own test accounts), returned 0 datasets, rules, assignments, policies and domains.
 - **The login history fits.** The super admin and regular accounts had been used alternately in the same browser (refresh tokens keep a session for 7 days).
 
 ## Fix

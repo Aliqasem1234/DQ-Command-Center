@@ -63,7 +63,7 @@ flowchart LR
 | **File storage** | The Docker volume `dq-command-center-v2_backend_uploads`, mounted at `/app/uploads` | Uploaded files and every cleaned or restored version, one folder per dataset |
 | **Authentication** | JWT access tokens (15 min) and refresh tokens (7 days); passwords hashed with Argon2id | See [section E](#e-security) |
 | **Authorization** | Roles → permissions, plus per-dataset ownership rules in `backend/app/core/dataset_access.py` | See [section F](#f-user-and-administration-model) |
-| **Background tasks** | **None run.** `backend/app/tasks/scheduler.py` exists but is never started | Scans and rules run when a user asks (upload, Skanna, Kör) |
+| **Background tasks** | **None.** The unused scheduler and its `apscheduler` dependency were removed on 2026-10-25 | Scans and rules run when a user asks (upload, scan, run). |
 
 ---
 
@@ -81,7 +81,7 @@ flowchart LR
 | `backend/app/config.py` | Settings read from environment variables, plus production safety checks | ⚠ Don't weaken the checks |
 | `backend/app/models/` | Database tables as Python classes | ⚠ Any change needs a new Alembic migration |
 | `backend/alembic/versions/` | Migrations `001`–`012` | ⛔ **Never edit or delete an applied migration**; add a new one |
-| `backend/tests/` | pytest tests (164) | Yes, add more |
+| `backend/tests/` | pytest tests (178) | Yes, add more |
 | `backend/app/tools/prepare_external_testing.py` | Finds and deactivates known-password accounts | Use as documented |
 | `frontend/src/pages/` | One folder per page | Yes |
 | `frontend/src/services/` | API calls | Yes |
@@ -96,7 +96,7 @@ flowchart LR
 | `.env.example` | Template with placeholders | Yes, keep it free of real values |
 | `e2e/` | Real-browser test scripts | Yes |
 | `scripts/backup-db.ps1`, `scripts/init-db.sql` | SQL backup helper; DB extensions on first start | — |
-| `docs/` | Reports and guides; `docs/archive/` holds outdated early reports | — |
+| `docs/` | Guides (deployment, security, testing, cleaning, architecture, admin setup); `docs/history/` holds dated incident and decision reports | — |
 
 **Files you should never edit by hand:** applied migrations, `package-lock.json` (use `npm install`), anything under `node_modules/`, and generated files (`dist/`, `*.tsbuildinfo`, `__pycache__`).
 
@@ -178,9 +178,10 @@ The verified controls, briefly. Details and evidence are in [docs/SECURITY_AND_P
 | Control | How it works (verified) |
 |---|---|
 | Password hashing | Argon2id. Plain passwords are never stored or logged |
-| Login | 15-minute access token and 7-day refresh token (rotated on use, revoked on logout) |
+| Login | 15-minute access token and 7-day refresh token (rotated on use, revoked on logout); PyJWT with HMAC only and required claims; unknown e-mails cost the same time as wrong passwords |
 | Lockout | 5 failed logins → 15-minute lock |
 | Deactivation | Ends the user's sessions immediately |
+| Password change | Ends every other session; the current one gets fresh tokens |
 | Password reset | Ends all sessions; single-use 1-hour token; never returned by the API unless `DEV_EXPOSE_AUTH_TOKENS=true` in development (production refuses to start with it on) |
 | Roles and permissions | Routes require permissions; regular users have product permissions only |
 | Data isolation | Enforced in database queries; foreign IDs answer 404 |
@@ -192,6 +193,8 @@ The verified controls, briefly. Details and evidence are in [docs/SECURITY_AND_P
 | Required secrets | `DATABASE_URL`, `DATABASE_URL_SYNC` and `JWT_SECRET_KEY` have **no code defaults**. The backend refuses to start in any environment if they are missing, empty or a known placeholder, and its error messages never echo the values |
 | Production config | Refuses weak or default secrets, short or dev-looking database passwords, DEBUG logging, `*` CORS, token echo and unknown `ENVIRONMENT` |
 | Demo accounts | Development-only, with random passwords; login refuses them in production even if a development database is reused |
+| Containers | Backend runs as the unprivileged user `app` (uid 10001) with all Linux capabilities dropped; the one-shot `uploads-permissions` service hands the uploads volume to that user on every start (see `docs/DEPLOYMENT.md`) |
+| File uploads | `.csv` and `.xlsx` only, ≤50 MB, generated file names, `.xlsx` zip-bomb guard (≤500 MB unpacked) |
 
 **Recommendations (not yet done):**
 - HTTPS (required before external access);
@@ -201,7 +204,7 @@ The verified controls, briefly. Details and evidence are in [docs/SECURITY_AND_P
 - removing `INIT_ADMIN_PASSWORD` from `.env` after the first admin exists.
 
 **Development vs production-like:**
-- Development exposes API docs, prints SQL debug logs, seeds demo data and runs the Vite dev server.
+- Development exposes API docs, seeds demo data and runs the Vite dev server. SQL statement logging is opt-in (`SQL_ECHO=true`) because it prints bound parameters.
 - The production-like stack does none of this, publishes only nginx on `127.0.0.1:80`, and doesn't publish the database or API ports.
 
 **Public exposure risk.** `127.0.0.1` means only your computer can connect. Exposing the app to a network **without HTTPS** would send passwords and tokens in clear text. See [section J](#j-production-like-operation).
@@ -282,7 +285,7 @@ All operations are deterministic, previewed first, and saved as a **new version*
 The commands below are verified. More detail is in [docs/TESTING_AND_RELEASE.md](docs/TESTING_AND_RELEASE.md).
 
 ```powershell
-docker exec dq-backend python -m pytest -q -p no:logging   # backend: 164 tests
+docker exec dq-backend python -m pytest -q -p no:logging   # backend: 178 tests
 cd frontend; npx vitest run; npx tsc -b; npm run build; cd ..  # frontend: 15 tests, types, build
 docker compose config --quiet                                  # dev compose valid (prints nothing)
 docker compose -f docker-compose.prod.yml config --quiet       # prod compose valid
@@ -322,7 +325,7 @@ npm run sweep                                                  # every GET endpo
   - "Kontot har avaktiverats": an admin deactivated the account.
   - Then check `docker compose logs --tail 100 backend`.
 - **Upload errors:**
-  - Only `.csv`, `.xlsx` and `.xls` up to 50 MB are accepted.
+  - Only `.csv` and `.xlsx` up to 50 MB are accepted; an `.xlsx` must be a real workbook that unpacks to at most 500 MB (zip-bomb guard). Legacy `.xls` is not supported.
   - A file that can't be parsed gives "Filen kunde inte läsas".
   - The same dataset name twice for **one** user is refused.
 - **Database connectivity:**
@@ -337,7 +340,7 @@ npm run sweep                                                  # every GET endpo
 | | Development (`docker-compose.yml`) | Production-like (`docker-compose.prod.yml`) |
 |---|---|---|
 | Frontend | Vite dev server (hot reload) | compiled build served by nginx |
-| `ENVIRONMENT` | development (demo seed, API docs, SQL debug log) | production (strict checks, no docs, no demo seed) |
+| `ENVIRONMENT` | development (demo seed, API docs, optional SQL log) | production (strict checks, no docs, no demo seed) |
 | Published ports | 127.0.0.1: 80, 5173, 8000, 5432 | **127.0.0.1:80 only** |
 | Database | same volume | same volume (declared `external`) |
 
@@ -407,7 +410,7 @@ This exact drill was run on 2026-10-18: the users, datasets and versions counts 
    docker cp "$dest\db-GOOD.dump" dq-postgres:/tmp/good.dump
    docker exec dq-postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner /tmp/good.dump && unlink /tmp/good.dump'
    ```
-4. If files are missing, copy them back: `docker cp "$dest\uploads-GOOD\." dq-backend:/app/uploads`.
+4. If files are missing, copy them back: `docker cp "$dest\uploads-GOOD\." dq-backend:/app/uploads`. `docker cp` creates root-owned files, so then hand them to the backend's unprivileged user: `docker compose run --rm uploads-permissions` (add `-f docker-compose.prod.yml` for the production-like stack).
 5. Check out the code version that matches the backup (`git log`), then `docker compose up -d`.
 6. Confirm: `docker compose ps` is healthy, `/health` reports the database ok, counts match, and you can log in and open a dataset.
 
@@ -443,6 +446,7 @@ Defined in `.env` (copy from `.env.example`) and passed to containers by the Com
 | `LOG_LEVEL` | log detail (dev) | no | `INFO` | no | `DEBUG` refused in production |
 | `PROD_LOG_LEVEL` | log level (prod stack) | no | `INFO` | no | |
 | `DEV_EXPOSE_AUTH_TOKENS` | return reset/verify tokens in responses (local only) | no | `false` | **yes (if true)** | refused in production; never enable on a reachable machine |
+| `SQL_ECHO` | log every SQL statement with its parameters | no | `false` | **yes (if true)** | development only; the log then contains password and token hashes |
 | `DEV_BIND_ADDRESS` | host address for dev ports | no | `127.0.0.1` | — | `0.0.0.0` exposes everything to your network |
 | `PROD_BIND_ADDRESS` / `PROD_HTTP_PORT` | host address and port for the prod stack | no | `127.0.0.1` / `80` | — | needs HTTPS before any non-local address |
 | `VITE_API_BASE_URL` | API path used by the frontend | no | `/api` | no | baked into the production build |
@@ -492,8 +496,7 @@ Settings not in `.env`, defined in `backend/app/config.py`: `UPLOAD_DIR` (`uploa
 - no phone normalisation.
 
 **Technical debt:**
-- ESLint not installed;
-- unused files (`nginx/Dockerfile`, the frontend production stage, `scheduler.py`, the `apscheduler` dependency);
+- no linter configured (ESLint was never installed; the dead `lint` script was removed);
 - `SECRET_KEY` and `RATE_LIMIT_PER_MINUTE` defined but unused;
 - `Manager` and `Analyst` roles now redundant with `User`;
 - the production backend image contains the tests.
@@ -503,7 +506,7 @@ Settings not in `.env`, defined in `backend/app/config.py`: `UPLOAD_DIR` (`uploa
 2. SMTP;
 3. scheduled backups;
 4. report export of the quality summary;
-5. ESLint in CI with the backend, frontend and e2e suites;
+5. a linter (ESLint) and CI running the backend, frontend and e2e suites;
 6. role-model simplification;
 7. timeliness rules (e.g. "date not older than N days").
 

@@ -181,7 +181,7 @@ Do this on the live database only when you decide to; every step is reversible.
 ### 10.1 Development (Vite, hot reload, demo seed, API docs)
 
 ```powershell
-cd C:\Users\aliqa\OneDrive\Desktop\dq-command-center-v2
+cd <project folder>
 docker compose up -d --build
 # http://localhost  (API docs: http://localhost/docs, backend: http://127.0.0.1:8000)
 docker exec dq-backend python -m pytest -q -p no:logging
@@ -193,7 +193,7 @@ Ports bind to 127.0.0.1. To reach the dev server from another device on a truste
 ### 10.2 Production-like local stack
 
 ```powershell
-cd C:\Users\aliqa\OneDrive\Desktop\dq-command-center-v2
+cd <project folder>
 docker compose down                                    # stop dev - NEVER add -v
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps           # postgres, backend, nginx all healthy
